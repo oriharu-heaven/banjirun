@@ -216,13 +216,22 @@ public class BungeeDemoDirector : MonoBehaviour
 
     void Update()
     {
+        if (Time.time > timeLimit && !finished) Finish(false, "時間切れ");
+    }
+
+    /// <summary>
+    /// 台本（コルーチン）がこのフレームで決めた入力を、次のフレームの FirstPersonControls に渡す。
+    /// コルーチンは Update のあと・LateUpdate の前に動くので、ここで渡すと遅れが 1 コマで済む
+    /// （Update で渡すと 2 コマ遅れ、向きを直すたびに行き過ぎて、映像が左右に細かく揺れていた）。
+    /// </summary>
+    void PushCommands()
+    {
         if (controls == null) return;
         controls.ScriptedCommands = commands;
         commands.use = false;
         commands.resize = false;
         commands.jump = false;
         commands.look = Vector2.zero;
-        if (Time.time > timeLimit && !finished) Finish(false, "時間切れ");
     }
 
     static Vector3 Flat(Vector3 v) => new Vector3(v.x, 0f, v.z);
@@ -274,15 +283,26 @@ public class BungeeDemoDirector : MonoBehaviour
         yield return null;
     }
 
+    /// <summary>
+    /// 目標へ 1 コマ歩く。歩く向きは顔の向きと別に決め（目標へまっすぐ）、顔はなめらかに進む向きへ向ける。
+    /// 顔の向きを一気に合わせると、入力の 1 コマ遅れで行き過ぎて左右に揺れる。目標のすぐ近くでは向きを変えない（近いほど方向がぶれる）。
+    /// </summary>
     IEnumerator WalkStep(Vector3 target)
     {
         Vector3 to = Flat(target - body.Feet);
-        float yawError = Vector3.SignedAngle(Flat(body.transform.forward), to, Vector3.up);
-        float maxTurn = 140f * Time.deltaTime;
-        commands.look.x = Mathf.Clamp(yawError, -maxTurn, maxTurn);
+        float distance = to.magnitude;
+        Vector3 forward = Flat(body.transform.forward).normalized, right = Flat(body.transform.right).normalized;
+        float yawError = distance > 1e-4f ? Vector3.SignedAngle(forward, to, Vector3.up) : 0f;
+        if (distance > 0.3f)
+        {
+            float maxTurn = 120f * Time.deltaTime;
+            commands.look.x = Mathf.Clamp(yawError * (1f - Mathf.Exp(-5f * Time.deltaTime)), -maxTurn, maxTurn);
+        }
         commands.look.y = (CurrentPitch() - 8f) * 0.1f; // 少し下を見ながら歩く
-        float speed = Mathf.Clamp01(to.magnitude / 0.6f);
-        commands.move = new Vector2(0f, Mathf.Abs(yawError) < 40f ? Mathf.Max(speed, 0.25f) : 0.1f);
+        // 大きく向きが違う間は、ゆっくり歩きながら向き直る（後ろ向きに歩かない）
+        float speed = Mathf.Abs(yawError) > 70f && distance > 0.3f ? 0.15f : Mathf.Clamp(distance / 0.6f, 0.25f, 1f);
+        Vector3 dir = distance > 1e-4f ? to / distance : Vector3.zero;
+        commands.move = new Vector2(Vector3.Dot(dir, right), Vector3.Dot(dir, forward)) * speed;
         yield return null;
     }
 
@@ -413,6 +433,7 @@ public class BungeeDemoDirector : MonoBehaviour
 
     void LateUpdate()
     {
+        PushCommands();
         if (ffmpegInput == null || finished) return;
 
         // 外からのカメラは、クレーンのようにプレイヤーの高さへついていく

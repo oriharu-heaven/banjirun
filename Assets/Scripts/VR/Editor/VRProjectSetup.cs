@@ -71,7 +71,7 @@ public static class VRProjectSetup
     {
         var options = new BuildPlayerOptions
         {
-            scenes = EditorBuildSettings.scenes.Where(s => s.enabled).Select(s => s.path).ToArray(),
+            scenes = new[] { VRSceneBuilder.ScenePath }, // Quest には VR 版のシーンだけを入れる（画面版は FlatSceneBuilder.BuildMacApp）
             locationPathName = "Builds/Quest/BanjiRun.apk",
             target = BuildTarget.Android,
             targetGroup = BuildTargetGroup.Android,
@@ -159,7 +159,7 @@ public static class VRProjectSetup
     static void SetupSimulator()
     {
         // Mac には Quest Link がないので、エディターではヘッドセットなしで試す。
-        // 歩き回るのは VRDesktopControls（WASD + マウス）の方が分かりやすいので、XR Interaction Simulator は自動では出さない。
+        // 歩き回るのは VRNoHeadsetFallback（WASD + マウス）の方が分かりやすいので、XR Interaction Simulator は自動では出さない。
         // 手の細かい動きを試したいときは Project Settings > XR Plug-in Management > XR Interaction Toolkit で有効にする
         var prefab = FindSampleAsset<GameObject>("XR Interaction Simulator");
         if (prefab == null)

@@ -11,7 +11,7 @@ using UnityEngine;
 /// メニュー「BanjiRun/VR/5. Scene Stats」で、VR シーンの重さの目安をログと Builds/SceneStats/&lt;名前&gt;/report.txt に出し、
 /// 決まった場所から見た画像（Quest と同じ Mobile 画質 = quest_*.png、パソコンの PC 画質 = pc_*.png）を保存する。
 /// 数えるもの: リアルタイムのライト, コライダーの種類, 描画の回数（Draw Calls / SetPass / 三角形。Mobile 画質・片目ぶん）。
-/// メッシュのまとめ（VRMeshCombiner）と静的バッチはビルド時にしか掛からないので、同じ処理を一時的に掛けてから数える。シーンは保存しない。
+/// メッシュのまとめ（SceneMeshCombiner）と静的バッチはビルド時にしか掛からないので、同じ処理を一時的に掛けてから数える。シーンは保存しない。
 /// コマンド: Unity -batchmode -projectPath . -buildTarget Android -executeMethod VRSceneStats.RunBatch -statsLabel before
 /// （-quit は付けない。描画の回数はエディターのフレームが進まないと取れないので、終わったら自分で終了する）
 /// </summary>
@@ -129,9 +129,9 @@ public static class VRSceneStats
 
     static void ApplyStaticBatching()
     {
-        // ビルドと同じ順に、先に VRMeshCombiner でまとめ、残った Static の物に静的バッチを掛ける
+        // ビルドと同じ順に、先に SceneMeshCombiner でまとめ、残った Static の物に静的バッチを掛ける
         var room = Object.FindObjectsByType<RoomLightDimmer>(FindObjectsInactive.Exclude).FirstOrDefault();
-        if (room != null) Line($"メッシュをまとめる（VRMeshCombiner）: {VRMeshCombiner.Combine(room.gameObject)} 個に");
+        if (room != null) Line($"メッシュをまとめる（SceneMeshCombiner）: {SceneMeshCombiner.Combine(room.gameObject)} 個に");
         var statics = Object.FindObjectsByType<MeshRenderer>(FindObjectsInactive.Exclude)
             .Where(r => GameObjectUtility.AnyStaticEditorFlagsSet(r.gameObject, StaticEditorFlags.BatchingStatic))
             .Select(r => r.gameObject).ToArray();

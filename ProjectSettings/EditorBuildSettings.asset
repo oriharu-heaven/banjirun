@@ -9,6 +9,9 @@ EditorBuildSettings:
     path: Assets/Scenes/VR_Prototype.unity
     guid: 5b171c21bb61e43b6a88ce29e5a95996
   - enabled: 0
+    path: Assets/Scenes/Flat_Prototype.unity
+    guid: 0168b724bbad84b6ab1d2d325b34685a
+  - enabled: 0
     path: Assets/Scenes/Prototype.unity
     guid: 5e8a18c68606b40d897608fcd0772c63
   m_configObjects:

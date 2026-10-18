@@ -1,56 +1,81 @@
-# VR 化の準備（Meta Quest 単体）
+# VR 版と画面版（Meta Quest / Mac・PC）
 
-ブランチ `vr-setup` で、Meta Quest 単体（PC なし）で遊べる VR 版の土台を入れた。デスクトップ版の試作（`Prototype.unity`）はそのまま残している。
+ブランチ `vr-setup` で、等身大の一人称で学校の部屋を歩き、窓の外でバンジージャンプをする体験を、**VR（Meta Quest 単体）**と**画面（キーボード・マウス・ゲームパッド）**の両方で遊べるようにした。中身（部屋・窓・バンジー・音）は同じで、プレイヤーの体と操作だけが違う。小人の試作（`Prototype.unity`、作者 Haru さんの元のゲーム）はそのまま残している。
 
 ## 方針
 
-- 対象: Meta Quest 3 / 3S / 2（Android アプリ）
-- 部品: Unity 公式の **OpenXR + XR Interaction Toolkit（XRI）**
-- 視点: **等身大の一人称**（自分の実際の背の高さで部屋を歩く）。小人サイズにしたくなったら `VRSceneBuilder.cs` の `PlayerScale` を下げる（0.15 で身長 25cm ほど。未検証）
+- VR: Meta Quest 3 / 3S / 2（Android アプリ）。Unity 公式の **OpenXR + XR Interaction Toolkit（XRI）**
+- 画面版: Mac（ほかの PC も同じシーンで作れる）。XR は使わない
+- 視点: どちらも**等身大の一人称**。小人サイズにしたくなったら `VRSceneBuilder.cs` の `PlayerScale` を下げる（0.15 で身長 25cm ほど。未検証）
+
+## VR と画面版の分け方
+
+```
+Assets/Scripts/
+  Game/      共通（VR でも画面でも同じゲームの仕組み）。BanjiRun.Game.asmdef で XR を参照できないようにしてある
+    PlayerBody.cs            体の窓口（足・頭・速さ、バンジー中に止めて外から動かす、移す）。VR 版と画面版がこれを継ぐ
+    IUsable.cs               手で使える物（ドア・窓・ハーネス）の共通の形
+    FirstPersonControls.cs   キーボード・マウス・ゲームパッドの一人称操作（画面版はいつも、VR 版はヘッドセットが無いときだけ）
+    BungeeJump.cs, BungeeHarness.cs, CombinedMeshLightmap.cs
+  VR/        VR だけ（XRI・OpenXR を使う）
+    VRPlayerBody.cs          XR Origin の体（移動は XRI のスティック・テレポート）
+    VRUseOnGrab.cs           コントローラーでつかんだら IUsable を使う
+    VRNoHeadsetFallback.cs   ヘッドセットなしで VR シーンを再生したら、キーボード・マウスで動けるようにする（試す・録画する用）
+    Editor/                  VRSceneBuilder（VR シーン）・VRProjectSetup（Quest の設定と APK）・VRSceneStats
+  Flat/      画面版だけ
+    FlatPlayerBody.cs        CharacterController の体と目の高さのカメラ
+    FlatHUD.cs               照準・使える物の案内・操作説明（H キーで出し入れ）
+    FlatCameraEffects.cs     落ちる速さで視野が広がる・ロープが張る／着地で画面が揺れる（VR では酔うので使わない）
+    Editor/                  FlatSceneBuilder（画面版のシーンと Mac アプリ）
+  Editor/    共通のシーン作り: GameSceneBuilder（部屋 + バンジー + 軽量化 + ベイク）・BungeeBuilder・SceneOptimizer・SceneMeshCombiner・BungeeDemoRecorder
+  Demo/      BungeeDemoDirector（自動操作で録画。エディター専用）
+  Prototype/ 小人の試作。Door は IUsable にした（VR・画面版で使えるように）
+```
+
+- シーンは 2 つ: `VR_Prototype.unity`（XR Origin）と `Flat_Prototype.unity`（画面版のプレイヤー）。どちらも `GameSceneBuilder` が同じ部屋とバンジーを作り、プレイヤーだけを `VRSceneBuilder` / `FlatSceneBuilder` が置く
+- VR だけの物（テレポート先・つかむ仕組み・ビネット）は `VRSceneBuilder` が足す。画面だけの物（照準・視野・揺れ）は `FlatSceneBuilder` が足す
+- ビルドもシーンを分ける: Quest の APK は VR シーンだけ、Mac アプリは画面版のシーンだけ（ビルド設定の一覧に頼らない）。ビルド設定の一覧は VR が先頭でチェックあり、画面版と小人の試作はチェックなし
+- 音・素材・模様は `Assets/Bungee/`（両方で使う）
 
 ## Unity の版
 
-**6000.7.0b2（Unity 6.7 ベータ）に上げた。** 元は 6000.6.5f1 だったが、作業した Mac に 6.6 がなかったため。チームで開く人は全員 6000.7.0b2 に、**Android Build Support（OpenJDK・SDK & NDK 込み）付き**でそろえる必要がある。
+**6000.7.0b2（Unity 6.7 ベータ）に上げた。** 元は 6000.6.5f1 だったが、作業した Mac に 6.6 がなかったため。チームで開く人は全員 6000.7.0b2 に、**Android Build Support（OpenJDK・SDK & NDK 込み）付き**でそろえる必要がある（画面版の Mac アプリは Mac Build Support）。
 
 上げたときに Unity が自動で変えたもの: URP 17.6 → 17.7、Input System 1.20 → 6.7、Test Framework・Timeline・uGUI など。XRI は 6.7 に合わせて 3.7.0-pre.1 になった。
 
-## 追加したもの
+## そのほかに入れたもの
 
 | 場所 | 中身 |
 | --- | --- |
-| `Assets/Scripts/VR/VRDoorHandle.cs` | VR でドアを開け閉めする（ドアに触れるかレイを当ててグリップ） |
-| `Assets/Scripts/VR/Editor/VRProjectSetup.cs` | Quest 用のプロジェクト設定・APK ビルド（メニュー） |
-| `Assets/Scripts/VR/Editor/VRSceneBuilder.cs` | VR シーンの生成（メニュー） |
-| `Assets/Scripts/VR/Editor/VRSceneOptimizer.cs` | VR シーンを Quest 向けに軽くする（ライトのベイク・Static・コライダー。3. の中で使う） |
-| `Assets/Scripts/VR/Editor/VRMeshCombiner.cs` | ビルド時（とエディターで再生するとき）に、部屋の物を素材と場所ごとに 1 つのメッシュにまとめる |
-| `Assets/Scripts/VR/CombinedMeshLightmap.cs` | まとめたメッシュにライトマップを付け直す（VRMeshCombiner が付ける） |
-| `Assets/Scripts/VR/Editor/VRSceneStats.cs` | VR シーンの重さを測って、決まった場所からの画像を保存する（メニュー 5.） |
-| `Assets/Scenes/VR_Prototype/` | VR シーンのベイク結果（ライトマップ・反射プローブ・オクルージョン。3. で作り直される） |
-| `Assets/Settings/VR_Lighting.lighting` | ベイクの設定（3. で上書きされる） |
-| `Assets/Scenes/VR_Prototype.unity` | 生成した VR シーン（試作と同じ部屋 + XR Origin） |
+| `Assets/Scenes/VR_Prototype/`, `Assets/Scenes/Flat_Prototype/` | それぞれのシーンのベイク結果（ライトマップ・反射プローブ・オクルージョン。シーンを作り直すと作り直される） |
+| `Assets/Settings/VR_Lighting.lighting` | ベイクの設定（両方のシーンで使う） |
 | `Assets/Samples/XR Interaction Toolkit/` | XRI のサンプル（Starter Assets・XR Interaction Simulator） |
 | `Assets/XR/`, `Assets/XRI/` | XR Plug-in Management・OpenXR・XRI の設定 |
-| `Assets/Scripts/VR/BungeeJump.cs`, `BungeeHarness.cs` | 窓の外のバンジージャンプ（下の「窓の外のバンジージャンプ」） |
-| `Assets/Scripts/VR/Editor/BungeeBuilder.cs` | バンジーの台・ハーネス・ロープ・クッション・案内板を作る（3. の中で使う） |
-| `Assets/Scripts/VR/VRDesktopControls.cs`, `VRPlayerBody.cs`, `IVRUsable.cs` | ヘッドセットが無いときのキーボード・マウス操作と、体の窓口（バンジー中に移動を止める等）、手で使える物の共通の形 |
-| `Assets/Scripts/VR/Demo/BungeeDemoDirector.cs`, `Editor/BungeeDemoRecorder.cs` | バンジーの一連の流れを自動で操作して動画にする（6.） |
-| `Assets/Fonts/MPLUSRounded1c-Bold.ttf` | 案内板の日本語フォント（M PLUS Rounded 1c、SIL Open Font License 1.1） |
-| `Assets/VR/Audio/` | バンジーの音（出どころは `CREDITS.txt`） |
-| `Assets/VR/Textures/Bungee_Grating.png` | 格子の床の模様（3. で作られる） |
-| `Assets/VR/Materials/` | バンジーの台・クッションなどの素材（3. で作られる） |
+| `Assets/Bungee/Audio/` | バンジーの音（出どころは `CREDITS.txt`） |
+| `Assets/Bungee/Materials/`, `Assets/Bungee/Textures/` | バンジーの台・クッション・格子の床などの素材（シーンを作ると作られる） |
+| `Assets/Bungee/Models/Harness/` | 全身用ハーネスの 3D モデル（Tripo で生成。Pro プラン・非公開・商用利用可。約 2.1 万三角形、テクスチャは Quest 向けに 1024 まで） |
+| `Assets/Fonts/MPLUSRounded1c-Bold.ttf` | 案内板と画面版の表示の日本語フォント（M PLUS Rounded 1c、SIL Open Font License 1.1） |
 
-`PrototypeSceneBuilder.cs` は、部屋を作る部分を `CreateRoom()` として切り出し、VR シーンからも使えるようにした（デスクトップ版の動きは同じ）。
+`PrototypeSceneBuilder.cs` は、部屋を作る部分を `CreateRoom()` として切り出し、VR・画面版のシーンからも使えるようにした（小人の試作の動きは同じ）。ホール東の窓（`EastWin_Sash_02`）をドアの一覧に足した。
 
-## メニュー「BanjiRun/VR」
+## メニュー
 
+**BanjiRun/Build All Scenes (VR + 画面版)** — 2 つのシーンを両方作り直す（ベイク込みで 5 分ほど）
+
+**BanjiRun/VR**
 1. **Import XRI Samples** — XRI のサンプルを取り込む（済み）
 2. **Setup Quest Project** — Quest 用の設定（済み。何度実行してもよい）
-3. **Build VR Scene** — `VR_Prototype.unity` を作り直す（ビルドするシーンにも登録する）
-4. **Build Quest APK** — `Builds/Quest/BanjiRun.apk` を作る
+3. **Build VR Scene** — `VR_Prototype.unity` を作り直す
+4. **Build Quest APK** — `Builds/Quest/BanjiRun.apk` を作る（VR シーンだけ）
 5. **Scene Stats** — VR シーンの重さ（ライト・コライダー・描画の回数）を測り、決まった 9 か所から見た画像を `Builds/SceneStats/latest/` に保存する（Quest の画質 `quest_*.png` とパソコンの画質 `pc_*.png`）。軽量化の前後を比べる用
-6. **Record Bungee Demo** — 窓を開けてバンジーを飛び、戻るまでを自動で操作して `Recordings/BungeeDemo.mp4` に録画する（ffmpeg が要る。git には入らない）
+6. **Record Bungee Demo** — VR シーンで、窓を開けてバンジーを飛び、戻るまでを自動で操作して `Recordings/BungeeDemo.mp4` に録画する（ffmpeg が要る。git には入らない）
 
-3. は部屋のライトのベイクもするので、1〜2 分かかる（M4 の Mac で約 1 分）。
+**BanjiRun/画面版**
+1. **Build Flat Scene** — `Flat_Prototype.unity` を作り直す
+2. **Build Mac App** — `Builds/Mac/BanjiRun.app` を作る（画面版のシーンだけ）
+3. **Record Bungee Demo** — 画面版で同じ流れを録画して `Recordings/BungeeDemo_Flat.mp4`
+
+シーンを作るときに部屋のライトのベイクもするので、1 つ 1〜2 分かかる（M4 の Mac で約 1 分）。
 
 ## Quest 用の設定（2. でやること）
 
@@ -58,19 +83,19 @@
 - XR Plug-in Management: **Android だけ** OpenXR を有効（Mac のエディターでは XR を起動しない）
 - OpenXR（Android）: Meta Quest Support、Oculus Touch / Meta Quest Touch Plus のコントローラー、Single Pass Instanced（マルチビュー）
 - 画質（Android は Mobile 段階 = `Mobile_RPAsset`）: 解像度 1.0、MSAA 4x、HDR オフ、1 つの物に効く毎フレームのライトは 2 個まで、影は 15m まで
-- 静的バッチ オン（部屋の物は VRMeshCombiner がまとめるので、それ以外の Static の物に効く）、MeshCollider の下ごしらえをビルド時に済ませる（Prebake Collision Meshes）
-- XRI: Interaction Layer 31 を「Teleport」に。XR Interaction Simulator は自動では出さない（エディターではキーボード・マウス操作の `VRDesktopControls` を使う）
+- 静的バッチ オン（部屋の物は SceneMeshCombiner がまとめるので、それ以外の Static の物に効く）、MeshCollider の下ごしらえをビルド時に済ませる（Prebake Collision Meshes）
+- XRI: Interaction Layer 31 を「Teleport」に。XR Interaction Simulator は自動では出さない（ヘッドセットなしの VR シーンは `VRNoHeadsetFallback` のキーボード・マウス操作）
 
-## Quest 向けの軽量化（3. でやること）
+## 軽量化（シーンを作るときにやること。もとは Quest 向け）
 
-部屋は `PrototypeSceneBuilder.CreateRoom()` で置いたあと、`VRSceneOptimizer` で次のようにする。パソコン版の試作（`Prototype.unity`）は変えていない（.blend の取り込みでライトマップ用の UV を作るようにしたが、見た目は同じ）。
+部屋は `PrototypeSceneBuilder.CreateRoom()` で置いたあと、`SceneOptimizer` で次のようにする（VR 版・画面版とも同じ）。小人の試作（`Prototype.unity`）は変えていない（.blend の取り込みでライトマップ用の UV を作るようにしたが、見た目は同じ）。
 
 - **ライトをすべてベイク**: 78 個のライトを Baked にし、明るさをライトマップに焼き込む（毎フレーム計算するライトは 0 個）。ベイクは Progressive GPU、1m あたり 25 画素、方向なし、AO あり。ドア・手などの動く物と小さな物（30cm 未満）はライトプローブ（272 点）で、つやのある物には反射プローブ（ホール・入口・別室の 3 個）で部屋を映す
-- **明るさ**: ベイクすると壁や天井に跳ね返った光も入るので、室内ライトの倍率（`RoomLightDimmer`）を VR だけ 0.3 → 0.1 にしている（`VRSceneOptimizer.BakedBrightness`）。ベイクしたライトは再生中に倍率を変えても明るさが変わらないので、変えたら 3. を実行し直す
+- **明るさ**: ベイクすると壁や天井に跳ね返った光も入るので、室内ライトの倍率（`RoomLightDimmer`）を VR だけ 0.3 → 0.1 にしている（`SceneOptimizer.BakedBrightness`）。ベイクしたライトは再生中に倍率を変えても明るさが変わらないので、変えたら 3. を実行し直す
 - **Static**: ドア以外を Static にする（ライトマップ・オクルージョン用）。ガラスは「隠す物」にしない
-- **メッシュをまとめる**（`VRMeshCombiner`。シーンのファイルは変えず、ビルド時とエディターで再生するときに動く）: 部屋の Static の物を「素材 × ライトマップ × 4m 四方の升目」（ライトプローブで照らす小物は高さ 1.5m ごと、窓の外の街は 40m）ごとに 1 つのメッシュにまとめる。約 1,300 個 → 約 340 個。Unity の静的バッチは SRP Batcher と一緒だと 1 物 1 回の描画のままなので、代わりにこれで描画の回数を減らす（部屋の物には静的バッチの印を付けない。先に静的バッチが掛かるとまとめられなくなる）。ドア・ガラスなど透明な物はまとめない。コライダーは元の物に残る。まとめた物は升目ごとに描くので、見えない所の三角形も少し描く
+- **メッシュをまとめる**（`SceneMeshCombiner`。シーンのファイルは変えず、ビルド時とエディターで再生するときに動く）: 部屋の Static の物を「素材 × ライトマップ × 4m 四方の升目」（ライトプローブで照らす小物は高さ 1.5m ごと、窓の外の街は 40m）ごとに 1 つのメッシュにまとめる。約 1,300 個 → 約 340 個。Unity の静的バッチは SRP Batcher と一緒だと 1 物 1 回の描画のままなので、代わりにこれで描画の回数を減らす（部屋の物には静的バッチの印を付けない。先に静的バッチが掛かるとまとめられなくなる）。ドア・ガラスなど透明な物はまとめない。コライダーは元の物に残る。まとめた物は升目ごとに描くので、見えない所の三角形も少し描く
 - **オクルージョンカリング**: 壁の向こうの物を描かない
-- **コライダー**: 10cm 未満の飾りと、下端が 2m より上の物（天井まわり・照明）からは外す。残りは箱（BoxCollider）にする。壁・床のように元から箱の形の物は形どおり、それ以外は外形の箱。3m 以上で箱の形でない物（梁など 31 個）だけ MeshCollider のまま
+- **コライダー**: 10cm 未満の飾りと、下端が 2m より上の物（天井まわり・照明）からは外す。天井の照明（`Grp_Lighting` のライトレールとスポット）は長くても付けない（舞台の上で頭がつかえて歩けなくなるため）。残りは箱（BoxCollider）にする。壁・床のように元から箱の形の物は形どおり、それ以外は外形の箱。3m 以上で箱の形でない物（梁など 31 個）だけ MeshCollider のまま
 
 ### 変更前と変更後（2026-10-18、`5. Scene Stats` で測定）
 
@@ -88,7 +113,9 @@
 
 ## 試し方
 
-**Mac のエディターで**: `VR_Prototype.unity` を開いて再生すると、ヘッドセットが無いので `VRDesktopControls` のキーボード・マウス操作になる。WASD/矢印で移動、マウスで見回す（Game ビューをクリックするとカーソルが固定、Esc で解除）、Shift で走る、Space でジャンプ、E キーか左クリックで「使う」（見ている窓・ドア・ハーネス。届く距離は 2.5m）。Mac は Quest Link に対応していないので、実機の映像をエディターに出すことはできない。
+**画面版**: `Flat_Prototype.unity` を開いて再生するか、`Builds/Mac/BanjiRun.app` を開く。Game ビューをクリックすると操作が始まる（操作は画面左上。H で消せる）。
+
+**VR シーンをヘッドセットなしで**: `VR_Prototype.unity` を開いて再生すると、ヘッドセットが無いので `VRNoHeadsetFallback` が `FirstPersonControls` のキーボード・マウス操作に切り替える。WASD/矢印で移動、マウスで見回す（Game ビューをクリックするとカーソルが固定、Esc で解除）、Shift で走る、Space でジャンプ、E キーか左クリックで「使う」（見ている窓・ドア・ハーネス。届く距離は 2.5m）。Mac は Quest Link に対応していないので、実機の映像をエディターに出すことはできない。
 
 **Quest 実機で**: Quest を開発者モードにして USB でつなぎ、Build Profiles（Android）から Build And Run。または 4. で APK を作り、Meta Quest Developer Hub で入れる。
 
@@ -100,13 +127,25 @@
 - グリップ: ドア・窓の開け閉め、ハーネスを付ける（触れるか、レイを当てて）
 - 動いている間は視界の端が暗くなる（酔い対策のビネット）
 
+## 画面版での操作
+
+| | キーボード・マウス | ゲームパッド |
+| --- | --- | --- |
+| 移動 | WASD / 矢印（Shift で走る） | 左スティック（押し込みで走る） |
+| 見回す | マウス（クリックでカーソル固定、Esc で解除） | 右スティック |
+| ジャンプ | Space | A |
+| 使う（窓・ハーネス） | E / 左クリック | X / 右トリガー |
+| 操作説明の表示 | H | — |
+
+照準を窓やハーネスに合わせると「E / クリック：開ける」のように出る。
+
 ## 窓の外のバンジージャンプ
 
 ホール東の窓（南から 2 枚目、`EastWin_Sash_02`）はドアと同じく開け閉めできる。開けて外のバルコニーへ出ると、バンジージャンプの台がある。建物は通りから約 23m の高さ。
 
 1. 窓を開ける（グリップ / E）。窓のとなりに案内板
 2. バルコニーの階段（3 段）でジャンプ台に上がる。手すりより外は**格子の床**で、足元から下の通りが透けて見える
-3. フックのハーネスをつかむ（グリップ / E）と、カチャッと体に付いてロープがつながる。ここから**心臓の音**が鳴り始める
+3. フックの全身用ハーネスをつかむ（グリップ / E）と、カチャッと体に付いてロープがつながる（下を見ると腰から胸にハーネスが見える）。ここから**心臓の音**が鳴り始める
 4. 台の先の**手すりのない細い板**（幅 50cm・長さ 1.35m）へ進む。板は先に行くほどしなって揺れ、ギシギシきしむ。心臓の音は速く大きくなる
 5. 板の先に立つと、目の前の空中に 3・2・1・「バンジー！」と出て、係の人の声で数える（押し出しはしない）
 6. 板の先から落ちると、約 1.3 秒の自由落下（最高で時速 50km ほど）。風の音が大きくなり、まわりを風の筋が流れる。ロープ（長さ 13m のばね）は**クッションの約 1m 上**でピンと張って引き戻す
@@ -115,11 +154,11 @@
 
 ハーネスを付けずに落ちても、クッションで受け止める。ロープの強さ・弾む回数・降ろす速さ・板のしなりは `BungeeJump` のインスペクター（`cordLength` `stiffness` `bouncesBeforeLowering` `lowerSpeed` `plankDip` など）で変えられる。台・板・クッションの位置は `BungeeBuilder` が部屋モデルのバルコニー・窓・道路から決める（3. で作り直される）。クッションの場所に止まっていた車（`Car_00`）は、3. で道路に沿って 6m ずらしている。
 
-落ちている間は、ヘッドセットでも体（XR Origin）をスクリプトで動かし、スティック移動・重力・テレポートは止める（`VRPlayerBody`）。**VR で 20m 落ちて地面すれすれで引き戻されるのはかなり酔いやすい**ので、実機で試して強さを決める必要がある（弱めるなら `cordLength` を短く・`stiffness` を上げる）。
+落ちている間は、体（`PlayerBody`）をスクリプトで動かし、ふつうの移動は止める（VR はスティック移動・重力・テレポート、画面版は FirstPersonControls）。画面版だけ、落ちる速さで視野が広がり、ロープが張った瞬間と着地で画面が揺れる（`FlatCameraEffects`）。**VR で 20m 落ちて地面すれすれで引き戻されるのはかなり酔いやすい**ので、実機で試して強さを決める必要がある（弱めるなら `cordLength` を短く・`stiffness` を上げる）。
 
-**音**（`Assets/VR/Audio/`、出どころは `CREDITS.txt`）: 台のまわりの風・心臓の音・板のきしみ・カラビナ・カウントダウンの声・飛び出す音・落ちる間の風・ロープが張る音・クッションに着地する音・歓声。OtoLogic（CC BY 4.0。公開するときはクレジットに「OtoLogic」と書く）と、ElevenLabs で作った音（Creator プラン、商用利用可）。
+**音**（`Assets/Bungee/Audio/`、出どころは `CREDITS.txt`）: 台のまわりの風・心臓の音・板のきしみ・カラビナ・カウントダウンの声・飛び出す音・落ちる間の風・ロープが張る音・クッションに着地する音・歓声。OtoLogic（CC BY 4.0。公開するときはクレジットに「OtoLogic」と書く）と、ElevenLabs で作った音（Creator プラン、商用利用可）。
 
-**動画**: 6. で、1 人称の映像（右上に外から見た様子、下に字幕）と音を録画する。音は `AudioRenderer` で映像と同じ時間に書き出すので、録画中にスピーカーから音は出ない。操作はキーボード・マウス操作と同じ入口（`VRDesktopControls`）を自動で動かすので、移動・当たり判定・窓・ハーネス・バンジーはゲームと同じ動き。
+**動画**: VR の 6. と画面版の 3. で、1 人称の映像（右上に外から見た様子、下に字幕）と音を録画する。音は `AudioRenderer` で映像と同じ時間に書き出すので、録画中にスピーカーから音は出ない。操作はキーボード・マウス操作と同じ入口（`FirstPersonControls`）を自動で動かすので、移動・当たり判定・窓・ハーネス・バンジーはゲームと同じ動き。
 
 ## まだやっていないこと・気になる点
 

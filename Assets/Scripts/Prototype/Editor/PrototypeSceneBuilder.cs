@@ -30,6 +30,13 @@ public static class PrototypeSceneBuilder
         new DoorSpec { name = "WC_Stall_2_Door", carryParent = "WC_Stall_2_DoorHinge", leaf = "WC_Stall_2_DoorLeaf", handle = "WC_Stall_2_DoorPullIn" },
         new DoorSpec { name = "Door_Hall_South", carry = new[] { "Door_Hall_South_Leaf", "Door_Hall_South_Handle" }, leaf = "Door_Hall_South_Leaf", handle = "Door_Hall_South_Handle" },
         new DoorSpec { name = "Lobby_StairDoor", carry = new[] { "Lobby_StairDoor_Leaf", "Lobby_StairDoor_Handle", "Lobby_StairDoor_Sign" }, leaf = "Lobby_StairDoor_Leaf", handle = "Lobby_StairDoor_Handle" },
+        // ホール東の窓（南から 2 枚目）。開けるとバルコニーへ出られる（VR 版はその先にバンジージャンプ）
+        new DoorSpec
+        {
+            name = "EastWin_Sash_02",
+            carry = new[] { "EastWin_Sash_02_FrameB", "EastWin_Sash_02_FrameL", "EastWin_Sash_02_FrameR", "EastWin_Sash_02_FrameT", "EastWin_Sash_02_Glass", "EastWin_Sash_02_Handle", "EastWin_Sash_02_HandleBase" },
+            leaf = "EastWin_Sash_02_Glass", handle = "EastWin_Sash_02_Handle",
+        },
     };
 
     [MenuItem("BanjiRun/Build Prototype Scene")]

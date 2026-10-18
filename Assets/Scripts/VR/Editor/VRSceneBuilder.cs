@@ -13,10 +13,12 @@ using UnityEngine.XR.Interaction.Toolkit.Locomotion.Turning;
 /// <summary>
 /// メニュー「BanjiRun/VR/3. Build VR Scene」で、試作と同じ部屋に VR プレイヤー（XRI の XR Origin）を置いたシーンを生成する。
 /// 移動: 左スティック, 向き: 右スティック左右, テレポート: 右スティックを前に倒して離す, ジャンプ: A, ドア: 触れるかレイを当ててグリップ
+/// ヘッドセットが無いとき（Mac のエディター）は VRDesktopControls のキーボード・マウス操作になる。
+/// ホール東の窓から外へ出ると、バルコニーにバンジージャンプ（BungeeBuilder）。
 /// </summary>
 public static class VRSceneBuilder
 {
-    const string ScenePath = "Assets/Scenes/VR_Prototype.unity";
+    public const string ScenePath = "Assets/Scenes/VR_Prototype.unity";
     const string DesktopScenePath = "Assets/Scenes/Prototype.unity";
 
     // プレイヤーの大きさ。1 = 等身大（自分の背の高さ）。小さくすると部屋が大きく見える（0.15 で身長 25cm ほど）
@@ -44,6 +46,7 @@ public static class VRSceneBuilder
             Debug.LogError("[VR] XR Origin (XR Rig) が見つかりません。先に「1. Import XRI Samples」を実行してください");
             return;
         }
+        VRSceneOptimizer.EnsureLightmapUVs();
         var modelAsset = PrototypeSceneBuilder.LoadRoomModel();
         if (modelAsset == null) return;
 
@@ -53,6 +56,9 @@ public static class VRSceneBuilder
         // ドアをコントローラーで開け閉めできるように（XRSimpleInteractable は RequireComponent で付く）
         var doors = room.GetComponentsInChildren<Door>(true);
         foreach (var door in doors) door.gameObject.AddComponent<VRDoorHandle>();
+
+        // Quest 向けの軽量化（Static・コライダー・ライト）。床のコライダーが箱に変わるので、テレポート先より先に
+        VRSceneOptimizer.PrepareRoom(room);
 
         // テレポート先の床（上向きの面だけ）
         InteractionLayerMask teleportLayer = InteractionLayerMask.GetMask("Teleport");
@@ -67,17 +73,23 @@ public static class VRSceneBuilder
             floors++;
         }
 
+        VRSceneOptimizer.AddProbes(room);
+        var bungee = BungeeBuilder.Create(room);
         new GameObject("XR Interaction Manager").AddComponent<XRInteractionManager>();
         var rig = CreateRig(rigPrefab, spawn);
 
+        // ベイクは保存したシーンにしかできないので、保存 → ベイク → もう一度保存
         EditorSceneManager.SaveScene(scene, ScenePath);
+        VRSceneOptimizer.Bake();
+        VRSceneOptimizer.BakeOcclusion();
+        EditorSceneManager.SaveScene(scene);
         EditorBuildSettings.scenes = new[]
         {
             new EditorBuildSettingsScene(ScenePath, true),
             new EditorBuildSettingsScene(DesktopScenePath, false), // パソコン版の試作。Quest のビルドには入れない
         };
         Selection.activeGameObject = rig;
-        Debug.Log($"[VR] シーン生成完了: {ScenePath} / ドア {doors.Length} 枚, テレポート床 {floors} 枚, 大きさ {PlayerScale}, spawn {spawn}");
+        Debug.Log($"[VR] シーン生成完了: {ScenePath} / ドア・窓 {doors.Length} 枚, テレポート床 {floors} 枚, バンジー {(bungee != null ? "あり" : "なし")}, 大きさ {PlayerScale}, spawn {spawn}");
     }
 
     static GameObject CreateRig(GameObject rigPrefab, Vector3 spawn)
@@ -90,6 +102,13 @@ public static class VRSceneBuilder
         var origin = rig.GetComponent<XROrigin>();
         origin.RequestedTrackingOriginMode = XROrigin.TrackingOriginMode.Floor;
         PrefabUtility.RecordPrefabInstancePropertyModifications(origin);
+
+        // 体の窓口（バンジー中に移動を止める等）と、ヘッドセットが無いときのキーボード・マウス操作
+        rig.AddComponent<VRPlayerBody>();
+        var desktop = rig.AddComponent<VRDesktopControls>();
+        var transforms = rig.GetComponentsInChildren<Transform>(true);
+        desktop.leftHand = transforms.FirstOrDefault(t => t.name == "Left Controller");
+        desktop.rightHand = transforms.FirstOrDefault(t => t.name == "Right Controller");
 
         var moves = rig.GetComponentsInChildren<ContinuousMoveProvider>(true);
         foreach (var move in moves)

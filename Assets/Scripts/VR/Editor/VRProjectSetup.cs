@@ -93,6 +93,10 @@ public static class VRProjectSetup
         PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[] { GraphicsDeviceType.Vulkan });
         PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft; // Quest は Landscape Left のみ
         EditorUserBuildSettings.androidBuildSubtarget = MobileTextureSubtarget.ASTC;
+
+        // 動かない物（Static）をビルド時にまとめて描画の回数を減らす。MeshCollider の下ごしらえもビルド時に済ませ、読み込みを速くする
+        PlayerSettings.SetStaticBatchingForPlatform(BuildTarget.Android, true);
+        PlayerSettings.bakeCollisionMeshes = true;
     }
 
     static void SetupXRManagement()
@@ -154,7 +158,9 @@ public static class VRProjectSetup
 
     static void SetupSimulator()
     {
-        // Mac には Quest Link がないので、エディターの再生時だけキーボードとマウスで VR を真似る（ビルドには入らない）
+        // Mac には Quest Link がないので、エディターではヘッドセットなしで試す。
+        // 歩き回るのは VRDesktopControls（WASD + マウス）の方が分かりやすいので、XR Interaction Simulator は自動では出さない。
+        // 手の細かい動きを試したいときは Project Settings > XR Plug-in Management > XR Interaction Toolkit で有効にする
         var prefab = FindSampleAsset<GameObject>("XR Interaction Simulator");
         if (prefab == null)
         {
@@ -164,7 +170,7 @@ public static class VRProjectSetup
         var settings = GetXriSettings("UnityEngine.XR.Interaction.Toolkit.Inputs.Simulation.XRDeviceSimulatorSettings");
         if (settings == null) return;
         var so = new SerializedObject(settings);
-        so.FindProperty("m_AutomaticallyInstantiateSimulatorPrefab").boolValue = true;
+        so.FindProperty("m_AutomaticallyInstantiateSimulatorPrefab").boolValue = false;
         so.FindProperty("m_AutomaticallyInstantiateInEditorOnly").boolValue = true;
         so.FindProperty("m_UseClassic").boolValue = false;
         so.FindProperty("m_SimulatorPrefab").objectReferenceValue = prefab;
@@ -179,6 +185,9 @@ public static class VRProjectSetup
         asset.renderScale = 1f;
         asset.msaaSampleCount = 4;
         asset.supportsHDR = false;
+        // 部屋のライトはベイクしたので、毎フレームのライトは後から足す物（懐中電灯など）だけ。1 つの物に効くのは 2 個まで、影は近くだけ
+        asset.maxAdditionalLightsCount = 2;
+        asset.shadowDistance = 15f;
         EditorUtility.SetDirty(asset);
     }
 

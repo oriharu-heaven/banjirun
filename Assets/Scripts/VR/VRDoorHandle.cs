@@ -3,14 +3,16 @@ using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
 /// <summary>
-/// VR でドアを開け閉めする。ドアのピボット（Door と同じ GameObject）に付け、
-/// コントローラーで触れるかレイを当ててグリップを押すと Door.Toggle を呼ぶ。
+/// VR でドア・窓を開け閉めする。ドアのピボット（Door と同じ GameObject）に付け、
+/// コントローラーで触れるかレイを当ててグリップを押すと Door.Toggle を呼ぶ（パソコンでは E キー）。
 /// </summary>
 [RequireComponent(typeof(Door), typeof(XRSimpleInteractable))]
-public class VRDoorHandle : MonoBehaviour
+public class VRDoorHandle : MonoBehaviour, IVRUsable
 {
     Door door;
     XRSimpleInteractable interactable;
+
+    public string UseHint => door.IsOpen ? "閉める" : "開ける";
 
     void Awake()
     {
@@ -24,7 +26,8 @@ public class VRDoorHandle : MonoBehaviour
     void OnSelectEntered(SelectEnterEventArgs args)
     {
         // 人のいない側へ開くよう、頭の位置を渡す（取れなければ手の位置）
-        Vector3 actor = Camera.main != null ? Camera.main.transform.position : args.interactorObject.transform.position;
-        door.Toggle(actor);
+        Use(Camera.main != null ? Camera.main.transform.position : args.interactorObject.transform.position);
     }
+
+    public void Use(Vector3 actor) => door.Toggle(actor);
 }

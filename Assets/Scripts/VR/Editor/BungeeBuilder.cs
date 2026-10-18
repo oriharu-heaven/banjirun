@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -7,18 +8,23 @@ using UnityEngine.XR.Interaction.Toolkit.Locomotion.Teleportation;
 
 /// <summary>
 /// VR シーンに、窓の外のバンジージャンプを作る（VRSceneBuilder から呼ぶ）。
-/// ホール東の窓（EastWin_Sash_02）を開けてバルコニーへ出て、階段でジャンプ台に上がり、ハーネスを付けて台の先から飛ぶ。
+/// ホール東の窓（EastWin_Sash_02）を開けてバルコニーへ出て、階段でジャンプ台に上がり、ハーネスを付けて台の先の細い板から飛ぶ。
 /// 下（約 23 m 下の歩道）にはクッション、その上に戻る輪。位置は部屋モデルのバルコニー・窓・歩道から決める。
 /// </summary>
 public static class BungeeBuilder
 {
     const string MaterialFolder = "Assets/VR/Materials";
+    const string AudioFolder = "Assets/VR/Audio";
+    const string GratingTexturePath = "Assets/VR/Textures/Bungee_Grating.png";
     const string FontPath = "Assets/Fonts/MPLUSRounded1c-Bold.ttf";
 
     const float PlatformTop = 1.15f;    // バルコニーの手すり（1.12 m）を越える高さ
     const float PlatformV0 = 1.18f;     // 台の幅（窓の端から測る）
     const float PlatformV1 = 2.38f;
-    const float PlatformReach = 3.14f;  // 壁から台の先まで（手すりから 1.8 m 張り出す）
+    const float PlatformReach = 3.14f;  // 壁から台の先まで（手すりから 1.8 m 張り出す。手すりより外は床が透けて下が見える）
+    const float PlankLength = 1.35f;    // 台の先の、手すりのない細い板
+    const float PlankWidth = 0.5f;
+    const float GratingStart = 1.31f;   // ここから先の床は格子（バルコニーの手すりの外）
     const float AnchorHeight = 2.63f;   // 台からロープの付け根まで
     const float CushionSize = 4f;
     const float CushionHeight = 1.6f;
@@ -66,8 +72,10 @@ public static class BungeeBuilder
         // 階段（3 段）とジャンプ台
         for (int i = 0; i < 3; i++)
             Box(root, $"Step_{i}", P(0.05f, 0.13f + 0.35f * i, balconyTop), P(1.15f, 0.48f + 0.35f * i, balconyTop + 0.29f * (i + 1)), "Metal");
-        var deck = Box(root, "Deck", P(0.04f, PlatformV0, PlatformTop - 0.1f), P(PlatformReach, PlatformV1, PlatformTop), "Metal");
-        Box(root, "EdgeStripe", P(PlatformReach - 0.14f, PlatformV0, PlatformTop), P(PlatformReach, PlatformV1, PlatformTop + 0.006f), "Safety", collider: false);
+        var deck = Box(root, "Deck", P(0.04f, PlatformV0, PlatformTop - 0.1f), P(GratingStart, PlatformV1, PlatformTop), "Metal");
+        var grating = Box(root, "Deck_Grating", P(GratingStart, PlatformV0, PlatformTop - 0.05f), P(PlatformReach, PlatformV1, PlatformTop), "Grating");
+        float tip = PlatformReach + PlankLength;
+        var plank = CreatePlank(root, P(PlatformReach, (PlatformV0 + PlatformV1) / 2f, PlatformTop));
         Beam(root, "Brace_A", P(1.33f, PlatformV0 + 0.07f, balconyTop - 0.8f), P(2.85f, PlatformV0 + 0.07f, PlatformTop - 0.1f), 0.08f, "Metal");
         Beam(root, "Brace_B", P(1.33f, PlatformV1 - 0.07f, balconyTop - 0.8f), P(2.85f, PlatformV1 - 0.07f, PlatformTop - 0.1f), 0.08f, "Metal");
 
@@ -80,11 +88,13 @@ public static class BungeeBuilder
         Cylinder(root, "Gantry_PostA", P(2.95f, PlatformV0 + 0.06f, PlatformTop), gantryTop - PlatformTop, 0.06f, "Safety");
         Cylinder(root, "Gantry_PostB", P(2.95f, PlatformV1 - 0.06f, PlatformTop), gantryTop - PlatformTop, 0.06f, "Safety");
         Beam(root, "Gantry_Bar", P(2.95f, PlatformV0 + 0.06f, gantryTop), P(2.95f, PlatformV1 - 0.06f, gantryTop), 0.1f, "Safety");
-        Beam(root, "Gantry_Arm", P(2.95f, vMid, gantryTop), P(3.6f, vMid, gantryTop), 0.1f, "Safety");
-        var anchor = Sphere(root, "Anchor", P(3.5f, vMid, gantryTop - 0.12f), 0.12f, "Metal").transform;
+        Beam(root, "Gantry_Arm", P(2.95f, vMid, gantryTop), P(tip + 0.1f, vMid, gantryTop), 0.12f, "Safety");
+        Beam(root, "Gantry_ArmStay", P(2.95f, vMid, gantryTop + 0.9f), P(tip + 0.05f, vMid, gantryTop), 0.04f, "Metal");
+        Beam(root, "Gantry_Mast", P(2.95f, vMid, gantryTop), P(2.95f, vMid, gantryTop + 0.95f), 0.1f, "Safety");
+        var anchor = Sphere(root, "Anchor", P(tip - 0.04f, vMid, gantryTop - 0.12f), 0.12f, "Metal").transform;
         var platformSign = Sign(root, "PlatformSign", "ハーネスを付けてから\n飛ぼう", P(2.92f, vMid, PlatformTop + 2.35f), outward, 0.1f);
         // カウントダウンは、台の先に立って前を見たときに目に入る空中に大きく出す
-        var countdownSign = Sign(root, "CountdownSign", "", P(PlatformReach + 1.4f, vMid, PlatformTop + 1.75f), outward, 0.42f, board: false);
+        var countdownSign = Sign(root, "CountdownSign", "", P(tip + 1.4f, vMid, PlatformTop + 1.75f), outward, 0.42f, board: false);
         countdownSign.color = new Color(1f, 0.85f, 0.2f);
 
         // ハーネスを掛けるフック
@@ -99,19 +109,21 @@ public static class BungeeBuilder
             new Vector3(window.center.x - outward.x * 0.17f, 1.55f, window.center.z - along.z * 1.05f), outward, 0.09f);
 
         // 下のクッション（エアマット）。底が原点で、着地すると BungeeJump が弾ませる
-        var cushion = CreateCushion(root, P(PlatformReach, vMid, ground));
+        float cushionU = tip + 0.1f;
+        MoveCarsAway(room, P(cushionU, vMid, ground));
+        var cushion = CreateCushion(root, P(cushionU, vMid, ground));
         float cushionTop = ground + CushionHeight;
-        var returnPad = Cylinder(root, "ReturnPad", P(PlatformReach, vMid - 1.25f, cushionTop - 0.02f), 0.02f, 0.5f, "ReturnPad", collider: false);
-        var glow = Cylinder(root, "ReturnPad_Glow", P(PlatformReach, vMid - 1.25f, cushionTop), 1.4f, 0.45f, "ReturnGlow", collider: false);
+        var returnPad = Cylinder(root, "ReturnPad", P(cushionU, vMid - 1.25f, cushionTop - 0.02f), 0.02f, 0.5f, "ReturnPad", collider: false);
+        var glow = Cylinder(root, "ReturnPad_Glow", P(cushionU, vMid - 1.25f, cushionTop), 1.4f, 0.45f, "ReturnGlow", collider: false);
         GameObjectUtility.SetStaticEditorFlags(glow, 0);
-        var groundSign = Sign(root, "GroundSign", "着地成功！\n光る輪で上に戻る", P(PlatformReach + 2.4f, vMid + 1.1f, cushionTop + 1.4f), outward, 0.14f);
-        Cylinder(root, "GroundSign_Pole", P(PlatformReach + 2.4f, vMid + 1.1f, ground), cushionTop + 1.0f - ground, 0.05f, "Metal");
+        var groundSign = Sign(root, "GroundSign", "着地成功！\n光る輪で上に戻る", P(cushionU + 2.4f, vMid + 1.1f, cushionTop + 1.4f), outward, 0.14f);
+        Cylinder(root, "GroundSign_Pole", P(cushionU + 2.4f, vMid + 1.1f, ground), cushionTop + 1.0f - ground, 0.05f, "Metal");
 
         var returnPoint = new GameObject("ReturnPoint").transform;
         returnPoint.SetParent(root, false);
         returnPoint.SetPositionAndRotation(P(0.55f, -0.45f, balconyTop), Quaternion.LookRotation(along));
 
-        var jumpEdge = Marker(root, "JumpEdge", P(PlatformReach, vMid, PlatformTop), outward);
+        var jumpEdge = Marker(root, "JumpEdge", P(tip, vMid, PlatformTop), outward);
         var dropLine = Marker(root, "DropLine", new Vector3(parapetOuter, PlatformTop, P(0f, vMid, 0f).z), outward);
 
         var cord = new GameObject("Cord").AddComponent<LineRenderer>();
@@ -123,10 +135,30 @@ public static class BungeeBuilder
 
         AddLightProbes(root, ground, cushionTop, vMid);
 
-        // テレポートでもジャンプ台に乗れるように
-        var area = deck.AddComponent<TeleportationArea>();
-        area.interactionLayers = InteractionLayerMask.GetMask("Teleport");
-        area.filterSelectionByHitNormal = true;
+        // 音: 台のまわりの風（近づくほど聞こえる）と、係の人の声
+        var ambient = new GameObject("AmbientWind").AddComponent<AudioSource>();
+        ambient.transform.SetParent(root, false);
+        ambient.transform.position = P(tip, vMid, PlatformTop + 1.5f);
+        ambient.clip = LoadClip("Bungee_WindAmbient");
+        ambient.loop = true;
+        ambient.volume = 0.7f;
+        ambient.spatialBlend = 1f;
+        ambient.minDistance = 3f;
+        ambient.maxDistance = 30f;
+        var staffVoice = new GameObject("StaffVoice").AddComponent<AudioSource>();
+        staffVoice.transform.SetParent(root, false);
+        staffVoice.transform.position = P(2.6f, vMid, PlatformTop + 1.6f);
+        staffVoice.playOnAwake = false;
+        staffVoice.spatialBlend = 0.6f;
+        staffVoice.minDistance = 4f;
+
+        // テレポートでもジャンプ台に乗れるように（細い板へは歩いて行く）
+        foreach (var floor in new[] { deck, grating })
+        {
+            var area = floor.AddComponent<TeleportationArea>();
+            area.interactionLayers = InteractionLayerMask.GetMask("Teleport");
+            area.filterSelectionByHitNormal = true;
+        }
 
         var bungee = root.gameObject.AddComponent<BungeeJump>();
         bungee.anchor = anchor;
@@ -142,10 +174,92 @@ public static class BungeeBuilder
         bungee.platformSign = platformSign;
         bungee.countdownSign = countdownSign;
         bungee.groundSign = groundSign;
+        bungee.plank = plank;
+        bungee.plankLength = PlankLength;
+        bungee.plankHalfWidth = PlankWidth / 2f;
+        bungee.ambientWind = ambient;
+        bungee.staffVoice = staffVoice;
+        bungee.heartbeat = LoadClip("Bungee_heartbeat");
+        bungee.fallWind = LoadClip("Bungee_fall_wind");
+        bungee.jumpWhoosh = LoadClip("Bungee_JumpWhoosh");
+        bungee.cordStretch = LoadClip("Bungee_cord_stretch");
+        bungee.plankCreak = LoadClip("Bungee_plank_creak");
+        bungee.carabiner = LoadClip("Bungee_carabiner");
+        bungee.cushionLand = LoadClip("Bungee_cushion_land");
+        bungee.cheer = LoadClip("Bungee_Cheer");
+        bungee.voiceNice = LoadClip("Bungee_Voice_nice_jump");
+        bungee.voiceCount = new[] { "count_3", "count_2", "count_1", "count_bungee" }.Select(n => LoadClip("Bungee_Voice_" + n)).ToArray();
+        bungee.windStreakMaterial = GetMaterial("WindStreak");
         harness.bungee = bungee;
 
         Debug.Log($"[VR] バンジー: 台の高さ {PlatformTop} m, クッションの上 {cushionTop:F2} m（落差 {PlatformTop - cushionTop:F1} m）, 付け根 {anchor.position}");
         return bungee;
+    }
+
+    /// <summary>台の先の、手すりのない細い板。付け根が原点で、BungeeJump が乗った人に合わせてしならせる。</summary>
+    static Transform CreatePlank(Transform parent, Vector3 basePosition)
+    {
+        var pivot = new GameObject("Plank").transform;
+        pivot.SetParent(parent, false);
+        pivot.SetPositionAndRotation(basePosition, Quaternion.LookRotation(outward));
+        var board = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        board.name = "Board";
+        board.transform.SetParent(pivot, false);
+        board.transform.localPosition = new Vector3(0f, -0.03f, PlankLength / 2f);
+        board.transform.localScale = new Vector3(PlankWidth, 0.06f, PlankLength);
+        board.GetComponent<Renderer>().sharedMaterial = GetMaterial("Wood");
+        Part(pivot, PrimitiveType.Cube, new Vector3(0f, 0.002f, PlankLength - 0.06f), new Vector3(PlankWidth, 0.004f, 0.1f), "Safety");
+        return pivot;
+    }
+
+    /// <summary>クッションを置く所に止まっている車を、道路に沿ってずらす。</summary>
+    static void MoveCarsAway(GameObject room, Vector3 cushionBase)
+    {
+        var area = new Bounds(cushionBase, new Vector3(CushionSize + 0.6f, 50f, CushionSize + 0.6f));
+        foreach (var car in room.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith("Car_") && t.parent != null && t.parent.name == "Ext_Street"))
+        {
+            var renderers = car.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0) continue;
+            Bounds b = renderers[0].bounds;
+            foreach (var r in renderers) b.Encapsulate(r.bounds);
+            if (!b.Intersects(area)) continue;
+            car.position -= along * 6f;
+            Debug.Log($"[VR] クッションの場所にあった {car.name} を 6m ずらした");
+        }
+    }
+
+    static AudioClip LoadClip(string name)
+    {
+        var clip = AssetDatabase.LoadAssetAtPath<AudioClip>($"{AudioFolder}/{name}.mp3");
+        if (clip == null) Debug.LogWarning($"[VR] 音が見つかりません: {AudioFolder}/{name}.mp3");
+        return clip;
+    }
+
+    /// <summary>格子の床の模様（棒は不透明、すき間は透明）。</summary>
+    static Texture2D GratingTexture()
+    {
+        var existing = AssetDatabase.LoadAssetAtPath<Texture2D>(GratingTexturePath);
+        if (existing != null) return existing;
+        const int size = 64;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            bool bar = x % 16 < 3 || y % 32 < 3; // 細かい縦の棒と、間隔の広い横の棒
+            tex.SetPixel(x, y, bar ? Color.white : new Color(1f, 1f, 1f, 0f));
+        }
+        Directory.CreateDirectory(Path.GetDirectoryName(GratingTexturePath));
+        File.WriteAllBytes(GratingTexturePath, tex.EncodeToPNG());
+        Object.DestroyImmediate(tex);
+        AssetDatabase.ImportAsset(GratingTexturePath);
+        var importer = (TextureImporter)AssetImporter.GetAtPath(GratingTexturePath);
+        importer.alphaIsTransparency = true;
+        importer.wrapMode = TextureWrapMode.Repeat;
+        importer.mipmapEnabled = true;
+        importer.mipMapsPreserveCoverage = true;
+        importer.alphaTestReferenceValue = 0.5f;
+        importer.SaveAndReimport();
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(GratingTexturePath);
     }
 
     static BungeeHarness CreateHarness(Transform parent, Vector3 position)
@@ -218,16 +332,17 @@ public static class BungeeBuilder
     static void AddLightProbes(Transform parent, float ground, float cushionTop, float vMid)
     {
         var probes = new List<Vector3>();
-        foreach (float u in new[] { 0.2f, 1.6f, 3.4f })
+        float tip = PlatformReach + PlankLength;
+        foreach (float u in new[] { 0.2f, 1.6f, 3.4f, tip + 0.3f })
         foreach (float v in new[] { PlatformV0 - 0.9f, PlatformV1 + 0.4f })
         foreach (float y in new[] { 0.3f, PlatformTop + 0.4f, PlatformTop + 2.6f })
             probes.Add(P(u, v, y));
         for (float y = PlatformTop; y > cushionTop; y -= 3f)
         {
-            probes.Add(P(PlatformReach - 1.2f, vMid, y));
-            probes.Add(P(PlatformReach + 1.2f, vMid, y));
+            probes.Add(P(tip - 1.2f, vMid, y));
+            probes.Add(P(tip + 1.2f, vMid, y));
         }
-        foreach (float u in new[] { PlatformReach - 3f, PlatformReach + 3f })
+        foreach (float u in new[] { tip - 3f, tip + 3f })
         foreach (float v in new[] { vMid - 3f, vMid + 3f })
         foreach (float y in new[] { ground + 0.3f, cushionTop + 1.5f })
             probes.Add(P(u, v, y));
@@ -362,6 +477,36 @@ public static class BungeeBuilder
     {
         switch (name)
         {
+            case "Grating":
+            {
+                // 格子の床。すき間から下の通りが見える
+                var grating = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+                grating.SetTexture("_BaseMap", GratingTexture());
+                grating.SetColor("_BaseColor", new Color(0.42f, 0.44f, 0.48f));
+                grating.SetFloat("_Metallic", 0.7f);
+                grating.SetFloat("_Smoothness", 0.4f);
+                grating.SetFloat("_AlphaClip", 1f);
+                grating.SetFloat("_Cutoff", 0.5f);
+                grating.SetFloat("_Cull", 0f);
+                grating.EnableKeyword("_ALPHATEST_ON");
+                grating.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
+                grating.mainTextureScale = new Vector2((PlatformReach - GratingStart) / 0.2f, (PlatformV1 - PlatformV0) / 0.2f);
+                return grating;
+            }
+            case "WindStreak":
+            {
+                // 落ちる間の風の筋（加算で白く光る線）
+                var streak = new Material(Shader.Find("Universal Render Pipeline/Particles/Unlit"));
+                streak.SetColor("_BaseColor", new Color(0.9f, 0.93f, 1f, 0.75f));
+                streak.SetFloat("_Surface", 1f);
+                streak.SetFloat("_Blend", 2f);
+                streak.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                streak.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.One);
+                streak.SetFloat("_ZWrite", 0f);
+                streak.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                streak.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+                return streak;
+            }
             case "Cord": return Unlit(new Color(0.95f, 0.35f, 0.1f));
             case "ReturnPad": return Unlit(new Color(0.25f, 0.95f, 1f));
             case "ReturnGlow":
@@ -380,6 +525,7 @@ public static class BungeeBuilder
         var (color, smoothness, metallic) = name switch
         {
             "Metal" => (new Color(0.32f, 0.34f, 0.38f), 0.45f, 0.6f),
+            "Wood" => (new Color(0.55f, 0.38f, 0.22f), 0.25f, 0f),
             "Safety" => (new Color(1f, 0.78f, 0.08f), 0.4f, 0.1f),
             "Red" => (new Color(0.86f, 0.13f, 0.1f), 0.35f, 0f),
             "CushionTop" => (new Color(1f, 0.83f, 0.18f), 0.35f, 0f),

@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using UnityEngine;
@@ -25,6 +26,7 @@ public class BungeeDemoDirector : MonoBehaviour
 
     const int AvatarLayer = 29;   // 外からのカメラにだけ映すプレイヤーの体
     const int CaptionLayer = 28;  // 字幕用カメラにだけ映す文字
+    const int FirstPersonLayer = 27; // 1 人称のカメラにだけ映す物（風の筋）
     const int CaptionHeight = 64;
     const int InsetWidth = 448, InsetHeight = 252, InsetMargin = 16;
 
@@ -39,9 +41,39 @@ public class BungeeDemoDirector : MonoBehaviour
     byte[] frameBytes;
     Process ffmpeg;
     Stream ffmpegInput;
+    // 音: バッチモードでは Unity の音が鳴らない（スピーカーにも出ない）ので、鳴らした音とループの音量を記録して、あとで同じ音のファイルから重ねる
+    const int AudioRate = 44100;
+    class LoopTrack
+    {
+        public AudioSource source;
+        public float spatialMin;  // 0 なら 2D
+        public readonly List<float> volume = new List<float>(), pitch = new List<float>();
+    }
+    struct OneShot { public int frame; public AudioClip clip; public float volume; }
+    readonly List<OneShot> oneShots = new List<OneShot>();
+    readonly List<LoopTrack> loops = new List<LoopTrack>();
     VRDesktopControls.Commands commands;
     int frames;
     bool finished;
+
+    void Awake() => Time.captureFramerate = fps;
+    void OnEnable() => BungeeJump.SoundPlayed += OnSound;
+    void OnDisable() => BungeeJump.SoundPlayed -= OnSound;
+
+    void OnSound(AudioClip clip, float volume, Vector3? position)
+    {
+        if (ffmpegInput == null || finished) return;
+        if (position.HasValue)
+        {
+            // 係の人の声は半分 3D（BungeeBuilder の staffVoice）、それ以外の 3D の音は PlayClipAtPoint の既定（最小距離 1m）
+            bool staff = bungee.staffVoice != null && position.Value == bungee.staffVoice.transform.position;
+            float attenuation = Rolloff(Vector3.Distance(cam.transform.position, position.Value), staff ? bungee.staffVoice.minDistance : 1f);
+            volume *= staff ? Mathf.Lerp(1f, attenuation, bungee.staffVoice.spatialBlend) : attenuation;
+        }
+        oneShots.Add(new OneShot { frame = frames, clip = clip, volume = volume });
+    }
+
+    static float Rolloff(float distance, float minDistance) => distance <= minDistance ? 1f : minDistance / distance;
 
     IEnumerator Start()
     {
@@ -53,7 +85,6 @@ public class BungeeDemoDirector : MonoBehaviour
             Finish(false, "VRPlayerBody / VRDesktopControls / BungeeJump が見つかりません");
             yield break;
         }
-        Time.captureFramerate = fps;
         Application.runInBackground = true;
         yield return null; // 他の Start（VRDesktopControls など）を先に済ませる
         controls.Scripted = true;
@@ -101,38 +132,48 @@ public class BungeeDemoDirector : MonoBehaviour
         yield return Use();
         yield return Wait(0.8f);
 
-        Caption("④ 台の先に立つと、カウントダウン");
-        Vector3 edge = bungee.jumpEdge.position - outward * 0.3f;
-        yield return WalkTo(Flat(edge) + deck);
-        yield return LookAt(bungee.countdownSign.transform.position, 1.0f);
-        yield return Wait(2.0f);
-        yield return LookAt(bungee.cushion.position, 0.9f);
+        Caption("④ 手すりの外は、床が透けている…");
+        float vMid = Vector3.Dot(bungee.jumpEdge.position - balcony, along);
+        Vector3 onGrating = Flat(balcony + along * vMid + outward * 2.2f) + deck;
+        yield return WalkTo(onGrating);
+        yield return LookAt(onGrating + outward * 0.6f + Vector3.down * 3f, 1.6f);
 
-        Caption("⑤ バンジー！");
+        Caption("⑤ 細い板の先へ。下まで 23m");
+        Vector3 edge = bungee.jumpEdge.position - outward * 0.25f;
+        yield return WalkTo(Flat(edge) + deck);
+        yield return LookAt(bungee.cushion.position, 1.8f);
+
+        Caption("⑥ 3・2・1…");
+        yield return LookAt(bungee.countdownSign.transform.position, 0.8f);
+        for (float w = 0f; w < 4f && bungee.countdownSign.text != "バンジー！"; w += Time.deltaTime) yield return null;
+        yield return Wait(0.25f);
+
+        Caption("⑦ バンジー！");
         float t = 0f;
         while (bungee.CurrentPhase == BungeeJump.Phase.Harnessed && t < 3f)
         {
             commands.move = Vector2.up;
+            yield return LookStep(bungee.cushion.position, 4f);
             t += Time.deltaTime;
-            yield return null;
         }
         commands = default;
-        // 落ちる間は下のクッションを見て、弾んだら少し上を見る
+        // 落ちる間は下のクッションを見る。地面すれすれで弾んだら、空の方を見上げる
         while (bungee.CurrentPhase == BungeeJump.Phase.Falling)
         {
-            Vector3 target = bungee.Bounces == 0 ? bungee.cushion.position : bungee.cushion.position + outward * 6f + Vector3.up * 10f;
+            if (bungee.Bounces == 1 && captionText.text.StartsWith("⑦")) Caption("⑧ 地面すれすれで、ぐいっと引き戻される！");
+            Vector3 target = bungee.Bounces == 0 ? bungee.cushion.position : bungee.cushion.position + outward * 6f + Vector3.up * 12f;
             yield return LookStep(target, 3f);
         }
 
-        Caption("⑥ 何度か弾んだら、ゆっくり降ろしてもらう");
+        Caption("⑨ 何度か弾んだら、ゆっくり降ろしてもらう");
         while (bungee.CurrentPhase == BungeeJump.Phase.Lowering)
             yield return LookStep(bungee.cushion.position, 2f);
 
-        Caption("⑦ クッションに着地！");
-        yield return LookAt(bungee.returnPad.position + outward * 3f, 1.2f);
+        Caption("⑩ クッションに着地！");
+        yield return LookAt(bungee.returnPad.position + outward * 3f, 1.4f);
         yield return Wait(0.8f);
 
-        Caption("⑧ 光る輪に入ると、バルコニーへ戻る");
+        Caption("⑪ 光る輪に入ると、バルコニーへ戻る");
         yield return LookAt(bungee.returnPad.position, 0.8f);
         t = 0f;
         while (bungee.CurrentPhase == BungeeJump.Phase.Landed && t < 6f)
@@ -232,7 +273,10 @@ public class BungeeDemoDirector : MonoBehaviour
         spectator.fieldOfView = 42f;
         spectator.nearClipPlane = 0.1f;
         spectator.farClipPlane = 300f;
-        spectator.cullingMask = ~(1 << CaptionLayer);
+        spectator.cullingMask = ~((1 << CaptionLayer) | (1 << FirstPersonLayer));
+        // 風の筋は 1 人称の映像だけに映す（外からの映像では雨のように見えて邪魔なので）
+        var streaks = GameObject.Find("WindStreaks");
+        if (streaks != null) streaks.layer = FirstPersonLayer;
         spectator.rect = new Rect(3f / InsetWidth, 3f / InsetHeight, 1f - 6f / InsetWidth, 1f - 6f / InsetHeight);
         spectator.enabled = false;
         spectator.transform.LookAt(body.Head);
@@ -267,8 +311,11 @@ public class BungeeDemoDirector : MonoBehaviour
         RenderCamera(captionCamera, labelRT);
         Caption("");
 
-        string fullPath = Path.GetFullPath(outputPath);
+        string fullPath = VideoOnlyPath;
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath));
+        foreach (var source in cam.GetComponents<AudioSource>())
+            if (source.loop && source.clip != null) loops.Add(new LoopTrack { source = source });
+        if (bungee.ambientWind != null) loops.Add(new LoopTrack { source = bungee.ambientWind, spatialMin = bungee.ambientWind.minDistance });
         var info = new ProcessStartInfo(ffmpegPath,
             $"-y -loglevel error -f rawvideo -pix_fmt rgba -s {width}x{height} -r {fps} -i - " +
             $"-vf vflip -c:v libx264 -preset medium -crf 20 -pix_fmt yuv420p -movflags +faststart \"{fullPath}\"")
@@ -347,6 +394,13 @@ public class BungeeDemoDirector : MonoBehaviour
         RenderTexture.active = previous;
         readback.GetRawTextureData<byte>().CopyTo(frameBytes);
         ffmpegInput.Write(frameBytes, 0, frameBytes.Length);
+        foreach (var loop in loops)
+        {
+            float volume = loop.source.enabled ? loop.source.volume : 0f; // バッチモードでは isPlaying が立たないので見ない
+            if (loop.spatialMin > 0f) volume *= Rolloff(Vector3.Distance(cam.transform.position, loop.source.transform.position), loop.spatialMin);
+            loop.volume.Add(volume);
+            loop.pitch.Add(loop.source.pitch);
+        }
         frames++;
     }
 
@@ -373,6 +427,97 @@ public class BungeeDemoDirector : MonoBehaviour
         return rt;
     }
 
+    string VideoOnlyPath => Path.ChangeExtension(Path.GetFullPath(outputPath), null) + "_video.mp4";
+    string AudioPath => Path.ChangeExtension(Path.GetFullPath(outputPath), null) + "_audio.wav";
+
+    /// <summary>記録した音を、同じ音のファイル（ffmpeg で読む）から重ねて WAV にする。</summary>
+    void MixAudio()
+    {
+        int total = (int)((long)frames * AudioRate / fps);
+        var mix = new float[total * 2];
+        var cache = new Dictionary<AudioClip, float[]>();
+        float[] Decode(AudioClip clip)
+        {
+            if (cache.TryGetValue(clip, out var cached)) return cached;
+            string path = Path.GetFullPath(UnityEditor.AssetDatabase.GetAssetPath(clip));
+            var decoder = Process.Start(new ProcessStartInfo(ffmpegPath, $"-v error -i \"{path}\" -f f32le -ac 2 -ar {AudioRate} -")
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                CreateNoWindow = true,
+            });
+            using var bytes = new MemoryStream();
+            decoder.StandardOutput.BaseStream.CopyTo(bytes);
+            decoder.WaitForExit();
+            var data = new float[bytes.Length / 4];
+            System.Buffer.BlockCopy(bytes.GetBuffer(), 0, data, 0, data.Length * 4);
+            return cache[clip] = data;
+        }
+
+        foreach (var shot in oneShots)
+        {
+            var data = Decode(shot.clip);
+            int start = (int)((long)shot.frame * AudioRate / fps) * 2;
+            for (int i = 0; i < data.Length && start + i < mix.Length; i++) mix[start + i] += data[i] * shot.volume;
+        }
+        foreach (var loop in loops)
+        {
+            var data = Decode(loop.source.clip);
+            int length = data.Length / 2;
+            if (length == 0 || loop.volume.Count == 0) continue;
+            double phase = 0;
+            for (int s = 0; s < total; s++)
+            {
+                double f = (double)s * fps / AudioRate;
+                int f0 = Mathf.Min((int)f, loop.volume.Count - 1), f1 = Mathf.Min(f0 + 1, loop.volume.Count - 1);
+                float k = (float)(f - (int)f);
+                float volume = Mathf.Lerp(loop.volume[f0], loop.volume[f1], k);
+                float pitch = Mathf.Lerp(loop.pitch[f0], loop.pitch[f1], k);
+                int a = (int)phase % length, b = (a + 1) % length;
+                float t = (float)(phase - System.Math.Floor(phase));
+                mix[s * 2] += Mathf.Lerp(data[a * 2], data[b * 2], t) * volume;
+                mix[s * 2 + 1] += Mathf.Lerp(data[a * 2 + 1], data[b * 2 + 1], t) * volume;
+                phase += pitch;
+            }
+        }
+
+        float peak = 0f;
+        foreach (float v in mix) peak = Mathf.Max(peak, Mathf.Abs(v));
+        float gain = peak > 0f ? 0.95f / peak : 1f; // 一番大きい所が 0.95 になるようにそろえる
+        using var writer = new BinaryWriter(File.Create(AudioPath));
+        writer.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+        writer.Write(36 + mix.Length * 2);
+        writer.Write(System.Text.Encoding.ASCII.GetBytes("WAVEfmt "));
+        writer.Write(16);
+        writer.Write((short)1);
+        writer.Write((short)2);
+        writer.Write(AudioRate);
+        writer.Write(AudioRate * 4);
+        writer.Write((short)4);
+        writer.Write((short)16);
+        writer.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+        writer.Write(mix.Length * 2);
+        foreach (float v in mix) writer.Write((short)(Mathf.Clamp(v * gain, -1f, 1f) * short.MaxValue));
+        Debug.Log($"[Demo] 音: 鳴らした音 {oneShots.Count} 回, ループ {loops.Count} 本, 最大 {peak:F2}（{gain:F2} 倍にして書き出し）");
+    }
+
+    /// <summary>映像と音を 1 つの mp4 にまとめる。</summary>
+    bool Mux()
+    {
+        string output = Path.GetFullPath(outputPath);
+        var mux = Process.Start(new ProcessStartInfo(ffmpegPath,
+            $"-y -loglevel error -i \"{VideoOnlyPath}\" -i \"{AudioPath}\" -c:v copy -c:a aac -b:a 192k -shortest -movflags +faststart \"{output}\"")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        });
+        mux.WaitForExit(120000);
+        if (mux.ExitCode != 0) return false;
+        File.Delete(VideoOnlyPath);
+        File.Delete(AudioPath);
+        return true;
+    }
+
     void Finish(bool ok, string reason)
     {
         if (finished) return;
@@ -383,6 +528,8 @@ public class BungeeDemoDirector : MonoBehaviour
             ffmpeg.WaitForExit(120000);
             Debug.Log($"[Demo] 録画終了: {frames} コマ（{frames / (float)fps:F1} 秒）, ffmpeg 終了コード {ffmpeg.ExitCode}");
             ok &= ffmpeg.ExitCode == 0;
+            MixAudio();
+            ok &= Mux();
         }
         Debug.Log($"[Demo] {(ok ? "成功" : "失敗")}: {reason} / バンジーの状態 {bungee?.CurrentPhase}, 弾んだ回数 {bungee?.Bounces}");
         Time.captureFramerate = 0;

@@ -1,18 +1,21 @@
+using System;
 using System.IO;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 /// <summary>
 /// メニュー「BanjiRun/画面版/...」: VR を使わずに同じ体験（等身大の一人称で窓から出てバンジー）を画面で遊ぶ版。
 /// 部屋とバンジーは GameSceneBuilder（VR 版と共通）。ここで置くのはプレイヤー（体・操作・画面の表示・画面だけの演出）。
-/// Mac 用のアプリも作れる（XR は使わない。XR Plug-in Management の Standalone は空のまま）。
+/// Mac 用のアプリと、ブラウザ版（unityroom に上げる WebGL）も作れる（XR は使わない。XR Plug-in Management の Standalone・WebGL は空のまま）。
 /// </summary>
 public static class FlatSceneBuilder
 {
     public const string ScenePath = "Assets/Scenes/Flat_Prototype.unity";
     const string MacAppPath = "Builds/Mac/BanjiRun.app";
+    const string WebGLRoot = "Builds/WebGL";
     const string FontPath = "Assets/Fonts/MPLUSRounded1c-Bold.ttf";
 
     const float EyeHeight = 1.6f;
@@ -84,6 +87,45 @@ public static class FlatSceneBuilder
         };
         var summary = BuildPipeline.BuildPlayer(options).summary;
         Debug.Log($"[画面版] Mac アプリのビルド: {summary.result} / {Path.GetFullPath(MacAppPath)} / {summary.totalTime}");
+        if (Application.isBatchMode && summary.result != BuildResult.Succeeded) EditorApplication.Exit(1);
+    }
+
+    /// <summary>
+    /// ブラウザ版（unityroom 用）。Builds/WebGL/BanjiRun_日時/Build/ の 4 ファイルを unityroom の「WebGL設定」に上げる。
+    /// unityroom の決まり（LG の作品と同じ）: Gzip で圧縮・ブラウザでの解凍なし・WebGL2・ファイル名はハッシュにしない。
+    /// 画質はブラウザ向けの Mobile 段階（Quest と同じ）。
+    /// </summary>
+    [MenuItem("BanjiRun/画面版/5. Build WebGL (unityroom)")]
+    public static void BuildWebGL()
+    {
+        PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
+        PlayerSettings.WebGL.decompressionFallback = false;
+        PlayerSettings.WebGL.nameFilesAsHashes = false;
+        PlayerSettings.WebGL.dataCaching = true;
+        PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
+        PlayerSettings.WebGL.threadsSupport = false;
+        PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.WebGL, false);
+        PlayerSettings.SetGraphicsAPIs(BuildTarget.WebGL, new[] { GraphicsDeviceType.OpenGLES3 });
+        PlayerSettings.defaultWebScreenWidth = 960;
+        PlayerSettings.defaultWebScreenHeight = 540;
+        PlayerSettings.runInBackground = false;
+        PlayerSettings.SplashScreen.show = false;
+        // コードの最適化（WebGL モジュール側の設定なので、名前で探して入れる）
+        var userSettings = Type.GetType("UnityEditor.WebGL.UserBuildSettings, UnityEditor.WebGL.Extensions");
+        var optimization = userSettings?.GetProperty("codeOptimization");
+        if (optimization != null) optimization.SetValue(null, Enum.Parse(optimization.PropertyType, "DiskSizeLTO"));
+        AssetDatabase.SaveAssets();
+
+        string dir = Path.Combine(WebGLRoot, $"BanjiRun_{DateTime.Now:yyyyMMdd-HHmm}");
+        var options = new BuildPlayerOptions
+        {
+            scenes = new[] { ScenePath },
+            locationPathName = dir,
+            target = BuildTarget.WebGL,
+            targetGroup = BuildTargetGroup.WebGL,
+        };
+        var summary = BuildPipeline.BuildPlayer(options).summary;
+        Debug.Log($"[画面版] WebGL のビルド: {summary.result} / {Path.GetFullPath(dir)}/Build / {summary.totalSize / 1048576f:F0} MB / {summary.totalTime}");
         if (Application.isBatchMode && summary.result != BuildResult.Succeeded) EditorApplication.Exit(1);
     }
 }

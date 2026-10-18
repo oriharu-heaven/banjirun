@@ -77,6 +77,7 @@ Assets/Scripts/
 2. **Build Mac App** — `Builds/Mac/BanjiRun.app` を作る（画面版のシーンだけ）
 3. **Record Bungee Demo** — 画面版で同じ流れを録画して `Recordings/BungeeDemo_Flat.mp4`
 4. **Record Mini Bungee Demo** — 画面版でミニキャラの流れを録画して `Recordings/BungeeDemo_Mini_Flat.mp4`
+5. **Build WebGL (unityroom)** — ブラウザ版を `Builds/WebGL/BanjiRun_日時/` に作る（下の「ブラウザ版（unityroom）」）
 
 シーンを作るときに部屋のライトのベイクもするので、1 つ 1〜2 分かかる（M4 の Mac で約 1 分）。
 
@@ -121,6 +122,17 @@ Assets/Scripts/
 **VR シーンをヘッドセットなしで**: `VR_Prototype.unity` を開いて再生すると、ヘッドセットが無いので `VRNoHeadsetFallback` が `FirstPersonControls` のキーボード・マウス操作に切り替える。WASD/矢印で移動、マウスで見回す（Game ビューをクリックするとカーソルが固定、Esc で解除）、Shift で走る、Space でジャンプ、E キーか左クリックで「使う」（見ている窓・ドア・ハーネス。届く距離は 2.5m）。Mac は Quest Link に対応していないので、実機の映像をエディターに出すことはできない。
 
 **Quest 実機で**: Quest を開発者モードにして USB でつなぎ、Build Profiles（Android）から Build And Run。または 4. で APK を作り、Meta Quest Developer Hub か `adb install -r Builds/Quest/BanjiRun.apk` で入れる（adb は Unity の Android モジュールの `SDK/platform-tools/adb`）。Quest の中では「アプリ → 提供元不明」に BanjiRun が出る。
+
+## ブラウザ版（unityroom）
+
+画面版のシーンを WebGL でビルドし、unityroom に**非公開**で上げてある: https://unityroom.com/games/banjirun （2026-10-18。投稿者のいのべえさんだけが開ける）。
+
+- ビルド: 画面版の 5.（バッチなら `-buildTarget WebGL -executeMethod FlatSceneBuilder.BuildWebGL`）。unityroom の決まりに合わせて Gzip・解凍のフォールバックなし・WebGL2・ファイル名はハッシュにしない、表示 960×540。初回はテクスチャの読み直しとシェーダーで 20 分ほど。約 35MB（data 26MB・wasm 10MB）
+- 画質はブラウザ向けの Mobile 段階（Quest と同じ）。XR は使わない（XR Plug-in Management の WebGL は空）
+- 上げ方は LG の作品と同じ（`LG-Template/Docs/unityroom.md` の「AI が上げる時」）: `Build/` の 4 ファイルを 9MB ずつ切ってページの中でつなぎ直し、SHA-256 を比べてから受け口に渡す
+- unityroom の設定: Unity のバージョンは **6000.6.x**（6.7 は一覧にない。6.6 で動くのを確かめた）、表示 960×540・アスペクト比を維持、メモリ 512MB、紹介文と操作方法を入れた。アイコン・使用アセットの欄はまだ
+- ビルドすると Unity の対象が WebGL になる。そのあと Quest の APK を作るときは Android への切り替え（テクスチャの読み直し）で時間がかかる
+- WebGL のビルドでは URP が `Mobile_RPAsset` などの「シェーダーの間引き」の設定を自動で書き換える（XR のキーワードを外すなど）。Quest 用の設定なので、その書き換えはコミットに入れない（`git checkout` で戻す）
 
 ## VR での操作（XRI の初期設定）
 

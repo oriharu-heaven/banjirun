@@ -5,8 +5,9 @@ using UnityEngine.InputSystem;
 /// <summary>
 /// 画面で遊ぶときの一人称の操作（キーボード・マウス・ゲームパッド）。PlayerBody と同じ GameObject に付ける。
 /// 画面版（FlatPlayerBody）ではいつも使い、VR 版ではヘッドセットが無いときだけ VRNoHeadsetFallback が有効にする。
-/// キーボード: WASD/矢印 移動, マウス 視点（クリックでカーソル固定 / Esc で解除）, Shift 走る, Space ジャンプ, E・左クリック 使う
-/// ゲームパッド: 左スティック 移動（押し込みで走る）, 右スティック 視点, A ジャンプ, X・右トリガー 使う
+/// キーボード: WASD/矢印 移動, マウス 視点（クリックでカーソル固定 / Esc で解除）, Shift 走る, Space ジャンプ, E・左クリック 使う, M ミニキャラ
+/// ゲームパッド: 左スティック 移動（押し込みで走る）, 右スティック 視点, A ジャンプ, X・右トリガー 使う, Y ミニキャラ
+/// 速さ・目の高さ・ジャンプ・手の届く距離は、体の大きさ（PlayerBody.Scale）に合わせる。
 /// 自動操作（デモの録画）は Scripted を true にして ScriptedCommands を毎フレーム入れる。
 /// </summary>
 [RequireComponent(typeof(PlayerBody), typeof(CharacterController))]
@@ -17,6 +18,7 @@ public class FirstPersonControls : MonoBehaviour
         public Vector2 move;  // -1〜1
         public Vector2 look;  // このフレームで回す角度（度）。x: 左右, y: 上下
         public bool run, jump, use;
+        public bool resize;   // 等身大 ⇔ ミニキャラ
     }
 
     public float walkSpeed = 1.6f;
@@ -27,6 +29,8 @@ public class FirstPersonControls : MonoBehaviour
     public float mouseSensitivity = 0.1f;
     public float stickLookSpeed = 140f;  // 度/秒
     public float reach = 2.5f;
+    // 以上は等身大のときの値。ミニのときの速さと手の届く距離は、大きさの平方根で縮める（そのまま縮めると遅すぎ・届かなすぎて遊びにくい）
+    public float minReachScale = 0.7f;
 
     [System.NonSerialized] public bool Scripted;
     [System.NonSerialized] public Commands ScriptedCommands;
@@ -61,6 +65,7 @@ public class FirstPersonControls : MonoBehaviour
     {
         Commands c = Scripted ? ScriptedCommands : ReadDevices();
         Look(c.look);
+        if (c.resize) body.ToggleMini();
         UpdateFocus();
         if (c.use && focused != null)
         {
@@ -70,6 +75,7 @@ public class FirstPersonControls : MonoBehaviour
         if (body.Locked)
         {
             verticalVelocity = 0f;
+            body.MoveIntent = Vector3.zero;
             return;
         }
         Move(c, Time.deltaTime);
@@ -78,7 +84,7 @@ public class FirstPersonControls : MonoBehaviour
     void LateUpdate()
     {
         // 頭は体の真上、目の高さに置く
-        cam.position = transform.position + transform.up * eyeHeight;
+        cam.position = transform.position + transform.up * (eyeHeight * body.Scale);
     }
 
     Commands ReadDevices()
@@ -97,6 +103,7 @@ public class FirstPersonControls : MonoBehaviour
             c.run = keyboard.leftShiftKey.isPressed;
             c.jump = keyboard.spaceKey.wasPressedThisFrame;
             c.use = keyboard.eKey.wasPressedThisFrame;
+            c.resize = keyboard.mKey.wasPressedThisFrame;
         }
         if (mouse != null)
         {
@@ -113,6 +120,7 @@ public class FirstPersonControls : MonoBehaviour
             c.run |= pad.leftStickButton.isPressed;
             c.jump |= pad.buttonSouth.wasPressedThisFrame;
             c.use |= pad.buttonWest.wasPressedThisFrame || pad.rightTrigger.wasPressedThisFrame;
+            c.resize |= pad.buttonNorth.wasPressedThisFrame;
         }
         return c;
     }
@@ -127,11 +135,13 @@ public class FirstPersonControls : MonoBehaviour
 
     void Move(Commands c, float dt)
     {
-        Vector3 wish = Vector3.ClampMagnitude(transform.forward * c.move.y + transform.right * c.move.x, 1f) * (c.run ? runSpeed : walkSpeed);
+        Vector3 intent = Vector3.ClampMagnitude(transform.forward * c.move.y + transform.right * c.move.x, 1f);
+        body.MoveIntent = intent;
+        Vector3 wish = intent * ((c.run ? runSpeed : walkSpeed) * Mathf.Sqrt(body.Scale));
         if (controller.isGrounded)
         {
             if (verticalVelocity < 0f) verticalVelocity = -1f;
-            if (c.jump) verticalVelocity = Mathf.Sqrt(2f * jumpHeight * -gravity);
+            if (c.jump) verticalVelocity = Mathf.Sqrt(2f * jumpHeight * body.Scale * -gravity);
         }
         verticalVelocity += gravity * dt;
         controller.Move((wish + Vector3.up * verticalVelocity) * dt);
@@ -140,7 +150,8 @@ public class FirstPersonControls : MonoBehaviour
     void UpdateFocus()
     {
         focused = null;
-        var hits = Physics.RaycastAll(cam.position, cam.forward, reach, ~0, QueryTriggerInteraction.Collide);
+        float distance = reach * Mathf.Max(Mathf.Sqrt(body.Scale), minReachScale);
+        var hits = Physics.RaycastAll(cam.position, cam.forward, distance, ~0, QueryTriggerInteraction.Collide);
         foreach (var hit in hits.OrderBy(h => h.distance))
         {
             if (hit.transform.IsChildOf(transform)) continue;

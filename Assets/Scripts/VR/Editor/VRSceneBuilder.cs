@@ -14,14 +14,12 @@ using UnityEngine.XR.Interaction.Toolkit.Locomotion.Turning;
 /// メニュー「BanjiRun/VR/3. Build VR Scene」で、VR 版のシーン（VR_Prototype）を作る。
 /// 部屋とバンジーは GameSceneBuilder（画面版と共通）。ここで足すのは VR だけの物:
 /// XR Origin（XRI）・つかんで使う仕組み（VRUseOnGrab）・テレポート先・酔い対策のビネット・ヘッドセットが無いときのキーボード操作。
-/// 移動: 左スティック, 向き: 右スティック左右, テレポート: 右スティックを前に倒して離す, ジャンプ: A, 使う: 触れるかレイを当ててグリップ
+/// 移動: 左スティック, 向き: 右スティック左右, テレポート: 右スティックを前に倒して離す, ジャンプ: A, 使う: 触れるかレイを当ててグリップ,
+/// ミニキャラ ⇔ 等身大: B・Y（VRPlayerBody が XR Origin ごと縮める。ミニのときは段をよじ登る: ClimbAssist）
 /// </summary>
 public static class VRSceneBuilder
 {
     public const string ScenePath = "Assets/Scenes/VR_Prototype.unity";
-
-    // プレイヤーの大きさ。1 = 等身大（自分の背の高さ）。小さくすると部屋が大きく見える（0.15 で身長 25cm ほど）
-    const float PlayerScale = 1f;
 
     // テレポートで降りられる床（部屋のモデルとバンジーの台）
     static readonly string[] TeleportFloors =
@@ -72,14 +70,13 @@ public static class VRSceneBuilder
 
         GameSceneBuilder.SaveAndBake(world.scene, ScenePath);
         Selection.activeGameObject = rig;
-        Debug.Log($"[VR] シーン生成完了: {ScenePath} / つかんで使える物 {usables.Length} 個, テレポート床 {floors} 枚, バンジー {(world.bungee != null ? "あり" : "なし")}, 大きさ {PlayerScale}, spawn {world.spawn}");
+        Debug.Log($"[VR] シーン生成完了: {ScenePath} / つかんで使える物 {usables.Length} 個, テレポート床 {floors} 枚, バンジー {(world.bungee != null ? "あり" : "なし")}, spawn {world.spawn}");
     }
 
     static GameObject CreateRig(GameObject rigPrefab, Vector3 spawn)
     {
         var rig = (GameObject)PrefabUtility.InstantiatePrefab(rigPrefab);
         rig.transform.SetPositionAndRotation(spawn, Quaternion.identity);
-        rig.transform.localScale = Vector3.one * PlayerScale;
 
         // 床を基準にして、自分の実際の背の高さで見る
         var origin = rig.GetComponent<XROrigin>();
@@ -88,18 +85,12 @@ public static class VRSceneBuilder
 
         // 体の窓口（バンジー中に移動を止める等）。ヘッドセットが無いときだけ、キーボード・マウス操作（FirstPersonControls）を有効にする
         rig.AddComponent<VRPlayerBody>();
+        rig.AddComponent<ClimbAssist>();
         rig.AddComponent<FirstPersonControls>().enabled = false;
         var fallback = rig.AddComponent<VRNoHeadsetFallback>();
         var transforms = rig.GetComponentsInChildren<Transform>(true);
         fallback.leftHand = transforms.FirstOrDefault(t => t.name == "Left Controller");
         fallback.rightHand = transforms.FirstOrDefault(t => t.name == "Right Controller");
-
-        var moves = rig.GetComponentsInChildren<ContinuousMoveProvider>(true);
-        foreach (var move in moves)
-        {
-            move.moveSpeed *= PlayerScale;
-            PrefabUtility.RecordPrefabInstancePropertyModifications(move);
-        }
 
         // 酔い対策: スティックで動く・回る間だけ視界の端を暗くする
         var vignettePrefab = VRProjectSetup.FindSampleAsset<GameObject>("TunnelingVignette");

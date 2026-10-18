@@ -66,6 +66,7 @@ public static class FlatSceneBuilder
         so.FindProperty("head").objectReferenceValue = cam;
         so.ApplyModifiedPropertiesWithoutUndo();
         player.AddComponent<FirstPersonControls>().eyeHeight = EyeHeight;
+        player.AddComponent<ClimbAssist>(); // ミニキャラのとき、段をよじ登る
         player.AddComponent<FlatHUD>().font = AssetDatabase.LoadAssetAtPath<Font>(FontPath);
         player.AddComponent<FlatCameraEffects>();
         return player;

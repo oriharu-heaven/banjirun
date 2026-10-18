@@ -6,19 +6,20 @@
 
 - VR: Meta Quest 3 / 3S / 2（Android アプリ）。Unity 公式の **OpenXR + XR Interaction Toolkit（XRI）**
 - 画面版: Mac（ほかの PC も同じシーンで作れる）。XR は使わない
-- 視点: どちらも**等身大の一人称**。小人サイズにしたくなったら `VRSceneBuilder.cs` の `PlayerScale` を下げる（0.15 で身長 25cm ほど。未検証）
+- 視点: どちらも**等身大の一人称**。遊んでいる途中で**ミニキャラ**（身長 25cm）にも切り替えられる（下の「ミニキャラモード」）
 
 ## VR と画面版の分け方
 
 ```
 Assets/Scripts/
   Game/      共通（VR でも画面でも同じゲームの仕組み）。BanjiRun.Game.asmdef で XR を参照できないようにしてある
-    PlayerBody.cs            体の窓口（足・頭・速さ、バンジー中に止めて外から動かす、移す）。VR 版と画面版がこれを継ぐ
+    PlayerBody.cs            体の窓口（足・頭・速さ、バンジー中に止めて外から動かす、移す、等身大 ⇔ ミニキャラ）。VR 版と画面版がこれを継ぐ
+    ClimbAssist.cs           ミニキャラのとき、段に向かって歩くとよじ登る
     IUsable.cs               手で使える物（ドア・窓・ハーネス）の共通の形
     FirstPersonControls.cs   キーボード・マウス・ゲームパッドの一人称操作（画面版はいつも、VR 版はヘッドセットが無いときだけ）
     BungeeJump.cs, BungeeHarness.cs, CombinedMeshLightmap.cs
   VR/        VR だけ（XRI・OpenXR を使う）
-    VRPlayerBody.cs          XR Origin の体（移動は XRI のスティック・テレポート）
+    VRPlayerBody.cs          XR Origin の体（移動は XRI のスティック・テレポート。ミニキャラは XR Origin ごと縮める）
     VRUseOnGrab.cs           コントローラーでつかんだら IUsable を使う
     VRNoHeadsetFallback.cs   ヘッドセットなしで VR シーンを再生したら、キーボード・マウスで動けるようにする（試す・録画する用）
     Editor/                  VRSceneBuilder（VR シーン）・VRProjectSetup（Quest の設定と APK）・VRSceneStats
@@ -69,11 +70,13 @@ Assets/Scripts/
 4. **Build Quest APK** — `Builds/Quest/BanjiRun.apk` を作る（VR シーンだけ）
 5. **Scene Stats** — VR シーンの重さ（ライト・コライダー・描画の回数）を測り、決まった 9 か所から見た画像を `Builds/SceneStats/latest/` に保存する（Quest の画質 `quest_*.png` とパソコンの画質 `pc_*.png`）。軽量化の前後を比べる用
 6. **Record Bungee Demo** — VR シーンで、窓を開けてバンジーを飛び、戻るまでを自動で操作して `Recordings/BungeeDemo.mp4` に録画する（ffmpeg が要る。git には入らない）
+7. **Record Mini Bungee Demo** — 同じ流れをミニキャラで（`Recordings/BungeeDemo_Mini_VR.mp4`）
 
 **BanjiRun/画面版**
 1. **Build Flat Scene** — `Flat_Prototype.unity` を作り直す
 2. **Build Mac App** — `Builds/Mac/BanjiRun.app` を作る（画面版のシーンだけ）
 3. **Record Bungee Demo** — 画面版で同じ流れを録画して `Recordings/BungeeDemo_Flat.mp4`
+4. **Record Mini Bungee Demo** — 画面版でミニキャラの流れを録画して `Recordings/BungeeDemo_Mini_Flat.mp4`
 
 シーンを作るときに部屋のライトのベイクもするので、1 つ 1〜2 分かかる（M4 の Mac で約 1 分）。
 
@@ -117,13 +120,14 @@ Assets/Scripts/
 
 **VR シーンをヘッドセットなしで**: `VR_Prototype.unity` を開いて再生すると、ヘッドセットが無いので `VRNoHeadsetFallback` が `FirstPersonControls` のキーボード・マウス操作に切り替える。WASD/矢印で移動、マウスで見回す（Game ビューをクリックするとカーソルが固定、Esc で解除）、Shift で走る、Space でジャンプ、E キーか左クリックで「使う」（見ている窓・ドア・ハーネス。届く距離は 2.5m）。Mac は Quest Link に対応していないので、実機の映像をエディターに出すことはできない。
 
-**Quest 実機で**: Quest を開発者モードにして USB でつなぎ、Build Profiles（Android）から Build And Run。または 4. で APK を作り、Meta Quest Developer Hub で入れる。
+**Quest 実機で**: Quest を開発者モードにして USB でつなぎ、Build Profiles（Android）から Build And Run。または 4. で APK を作り、Meta Quest Developer Hub か `adb install -r Builds/Quest/BanjiRun.apk` で入れる（adb は Unity の Android モジュールの `SDK/platform-tools/adb`）。Quest の中では「アプリ → 提供元不明」に BanjiRun が出る。
 
 ## VR での操作（XRI の初期設定）
 
 - 左スティック: 移動
 - 右スティック 左右: 45° 回転 / 前に倒して離す: テレポート（床だけ。`VRSceneBuilder.TeleportFloors`）
 - 右 A ボタン: ジャンプ
+- B ボタン（右）・Y ボタン（左）: ミニキャラ ⇔ 等身大
 - グリップ: ドア・窓の開け閉め、ハーネスを付ける（触れるか、レイを当てて）
 - 動いている間は視界の端が暗くなる（酔い対策のビネット）
 
@@ -135,6 +139,7 @@ Assets/Scripts/
 | 見回す | マウス（クリックでカーソル固定、Esc で解除） | 右スティック |
 | ジャンプ | Space | A |
 | 使う（窓・ハーネス） | E / 左クリック | X / 右トリガー |
+| ミニキャラ ⇔ 等身大 | M | Y |
 | 操作説明の表示 | H | — |
 
 照準を窓やハーネスに合わせると「E / クリック：開ける」のように出る。
@@ -158,12 +163,26 @@ Assets/Scripts/
 
 **音**（`Assets/Bungee/Audio/`、出どころは `CREDITS.txt`）: 台のまわりの風・心臓の音・板のきしみ・カラビナ・カウントダウンの声・飛び出す音・落ちる間の風・ロープが張る音・クッションに着地する音・歓声。OtoLogic（CC BY 4.0。公開するときはクレジットに「OtoLogic」と書く）と、ElevenLabs で作った音（Creator プラン、商用利用可）。
 
-**動画**: VR の 6. と画面版の 3. で、1 人称の映像（右上に外から見た様子、下に字幕）と音を録画する。音は `AudioRenderer` で映像と同じ時間に書き出すので、録画中にスピーカーから音は出ない。操作はキーボード・マウス操作と同じ入口（`FirstPersonControls`）を自動で動かすので、移動・当たり判定・窓・ハーネス・バンジーはゲームと同じ動き。
+**動画**: VR の 6. と画面版の 3.（ミニキャラは VR の 7. と画面版の 4.）で、1 人称の映像（右上に外から見た様子、下に字幕）と音を録画する。バッチモードでは Unity の音が鳴らないので、鳴らした音とループの音量をコマごとに記録し、あとで同じ音のファイルから重ねて映像とまとめる（録画中にスピーカーから音は出ない）。操作はキーボード・マウス操作と同じ入口（`FirstPersonControls`）を自動で動かすので、移動・当たり判定・窓・ハーネス・バンジーはゲームと同じ動き。
+
+## ミニキャラモード
+
+遊んでいる途中でいつでも（飛んでいる間を除く）、**身長 25cm のミニキャラ**に切り替えられる（大きさ `PlayerBody.MiniScale` = 0.15。元の小人の試作と同じくらい）。建物や台はそのままなので、同じ 23m の落差が、ミニの目には 150m ほどに見える。
+
+- 切り替え: 画面版は M キー・ゲームパッドの Y、VR は B・Y ボタン。0.8 秒で縮む・伸びる（音は OtoLogic）。机の下など、頭の上がふさがっている所では等身大に戻れない（画面版は「ここでは大きくなれない」と出る）
+- VR: XR Origin ごと縮める（`VRPlayerBody.ApplyScale`）。自分の頭や手の動きもそのまま小さくなる。XRI はスティックの移動の速さに XR Origin の大きさを掛けるので、遅くなりすぎないよう大きさの平方根の速さに戻している
+- 画面版: CharacterController の寸法と目の高さを縮める（`FlatPlayerBody.ApplyScale`）
+- 速さ・手の届く距離: 大きさの平方根で縮める（そのままだと歩くのが遅すぎ、窓やハーネスに届かない）。ジャンプの高さは大きさどおり
+- **よじ登り**（`ClimbAssist`）: ミニの体は舞台（20cm）・窓のさん・ジャンプ台の階段（1 段 29cm）をそのまま上がれないので、段に向かって歩くと 0.55 秒で上に乗る。登れるのは約 35cm まで（机やいすの座面には登れない）
+- **バンジー**: 腰の高さ・体に付けたハーネスを縮める。ロープはミニ用の長さ 15m・強さ 3.3（`miniCordLength` `miniStiffness`）で、最初の一番下がクッションの約 30cm 上（ミニの体 1 つ分）になる。ロープの体側の端は細くし、目の前を太い線が横切らないよう 12cm 後ろにつなぐ
+- クッションの当たり判定は、弾む見た目（`Cushion`）と分けて動かさない（`Cushion_Collider`）。面が上下すると、ミニの小さな体がクッションに沈んで下に抜けていたため
+- ロープの張りや揺れ、着地の画面の揺れ（画面版）は等身大と同じ
 
 ## まだやっていないこと・気になる点
 
 - **重さ**: ライトのベイク・メッシュのまとめ・オクルージョン・コライダーの簡略化はした（上の「Quest 向けの軽量化」）。描画の回数は最大 325 回。残る手は、遠くの小物を消す（LOD）、Quest の固定中心窩レンダリング（Foveated Rendering。画面の端を粗く描いて GPU を軽くする）。まとめたメッシュにライトマップが正しく付くかは、エディターでは確かめたが、実機ではまだ
-- **実機での確認**: APK のビルドまで。Quest で動かして、フレームレート・酔い・大きさの感じは見ていない（描画の回数はエディターで測った目安）
+- **実機での確認**: APK のビルドまで。Quest で動かして、フレームレート・酔い・大きさの感じは見ていない（描画の回数はエディターで測った目安）。ミニキャラの VR（XR Origin ごと縮める・B/Y ボタン・よじ登り）は、ヘッドセットなしのキーボード操作でしか確かめていない
+- **ミニキャラの案内**: VR では切り替えのボタン（B・Y）をどこにも表示していない。案内板か手元の表示が要る
 - **ゲームの中身**: 試作のダッシュ・ジャンプ・E キーのドアは、デスクトップ版のまま。VR での遊び（目的、敵、UI）はこれから。操作説明が画面の文字（OnGUI）なので、VR ではワールド空間の UI にする必要がある
 - **出現位置**: VR 版はホールの床から始まる。モデルには `PlayerSpawn_Elevator`（エレベーター内の出現位置）と `TitleCamera_Elevator` があるので、タイトル画面やスタート地点に使える
 - **OpenXR の検証で残った警告**: PC 用の Renderer（`PC_Renderer`）の SSAO。Android は Mobile 段階しか使わないので Quest には影響しないはず

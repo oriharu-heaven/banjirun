@@ -181,6 +181,8 @@ public static class BungeeBuilder
         bungee.cushionLand = LoadClip("Bungee_cushion_land");
         bungee.cheer = LoadClip("Bungee_Cheer");
         bungee.voiceNice = LoadClip("Bungee_Voice_nice_jump");
+        bungee.shrinkSound = LoadClip("Mini_Shrink");
+        bungee.growSound = LoadClip("Mini_Grow");
         bungee.voiceCount = new[] { "count_3", "count_2", "count_1", "count_bungee" }.Select(n => LoadClip("Bungee_Voice_" + n)).ToArray();
         bungee.windStreakMaterial = GetMaterial("WindStreak");
         bungee.wornHarnessModel = AssetDatabase.LoadAssetAtPath<GameObject>(HarnessModelPath);
@@ -314,7 +316,11 @@ public static class BungeeBuilder
         var root = new GameObject("Cushion");
         root.transform.SetParent(parent, false);
         root.transform.position = basePosition;
-        var box = root.AddComponent<BoxCollider>();
+        // 当たり判定は弾ませる見た目（root）とは別にして動かさない。面が上下すると、ミニキャラの小さな体がクッションに沈んで抜けてしまう
+        var collision = new GameObject("Cushion_Collider");
+        collision.transform.SetParent(parent, false);
+        collision.transform.position = basePosition;
+        var box = collision.AddComponent<BoxCollider>();
         box.center = new Vector3(0f, CushionHeight / 2f, 0f);
         box.size = new Vector3(CushionSize, CushionHeight, CushionSize);
 

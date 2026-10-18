@@ -59,7 +59,7 @@ public class VRNoHeadsetFallback : MonoBehaviour
     void OnGUI()
     {
         if (controls == null || controls.Scripted) return;
-        GUI.Label(new Rect(12, 10, 1000, 24), "VR シーン（ヘッドセットなし）: WASD 移動 / マウス 視点（クリックで固定・Esc で解除）/ Shift 走る / Space ジャンプ / E・クリック 使う");
+        GUI.Label(new Rect(12, 10, 1000, 24), "VR シーン（ヘッドセットなし）: WASD 移動 / マウス 視点（クリックで固定・Esc で解除）/ Shift 走る / Space ジャンプ / E・クリック 使う / M ミニキャラ");
         GUI.Label(new Rect(Screen.width / 2f - 6, Screen.height / 2f - 12, 20, 24), "+");
         if (controls.Focused != null)
             GUI.Box(new Rect(Screen.width / 2f - 120, Screen.height * 0.62f, 240, 30), $"[E] {controls.Focused.UseHint}");

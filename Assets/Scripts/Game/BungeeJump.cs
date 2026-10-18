@@ -8,6 +8,7 @@ using UnityEngine;
 /// 怖さの演出: 板がしなってきしむ、心臓の音（板の先ほど速く大きく）、係の人のカウントダウン、落ちる間の風の音と風の筋、
 /// ロープが張るときの音、地面すれすれまで落ちる長いロープ。
 /// VR でも画面版でも同じ。プレイヤーは PlayerBody を通してだけ動かす。
+/// ミニキャラ（PlayerBody.Scale）のときは、腰の高さ・体に付けたハーネスを縮め、ロープは地面すれすれに届く長さ・強さに変える。
 /// </summary>
 public class BungeeJump : MonoBehaviour
 {
@@ -36,7 +37,10 @@ public class BungeeJump : MonoBehaviour
     public float damping = 0.25f;
     public float swayDamping = 0.4f;
     public float airDrag = 0.01f;
-    public float waistHeight = 0.95f;
+    public float waistHeight = 0.95f;   // 等身大のとき。ミニでは大きさに合わせて縮める
+    [Tooltip("ミニキャラのときのロープ。腰が低く体が小さいので、最初の一番下でクッションの約 30cm 上（体 1 つ分ほど）まで落ちるようにした")]
+    public float miniCordLength = 15f;
+    public float miniStiffness = 3.3f;
     public int bouncesBeforeLowering = 2;
     public float lowerSpeed = 2.2f;
     public LineRenderer cord;
@@ -51,6 +55,7 @@ public class BungeeJump : MonoBehaviour
     public AudioSource staffVoice;  // 係の人の声（台の上）
     public AudioClip heartbeat, fallWind, jumpWhoosh, cordStretch, plankCreak, carabiner, cushionLand, cheer, voiceNice;
     public AudioClip[] voiceCount;  // 3, 2, 1, バンジー！
+    public AudioClip shrinkSound, growSound; // ミニキャラになる・等身大に戻る（音を 1 か所で鳴らして録画にも残すため、ここで鳴らす）
 
     [Header("風の筋（落ちる速さが分かるように）")]
     public Material windStreakMaterial;
@@ -81,6 +86,8 @@ public class BungeeJump : MonoBehaviour
     Vector3 waist;
     Vector3 velocity;
     float length;
+    float cordStiffness;
+    float cordScale = -1f;
     float countdown = -1f;
     int shownCount = -1;
     bool rising;
@@ -103,7 +110,11 @@ public class BungeeJump : MonoBehaviour
         if (cord != null) cord.positionCount = CordPoints;
         if (countdownSign != null) countdownScale = countdownSign.transform.localScale;
         if (plank != null) plankRest = plank.rotation;
-        if (body != null) SetupPlayerEffects(body.Camera.transform);
+        if (body != null)
+        {
+            SetupPlayerEffects(body.Camera.transform);
+            body.ResizeStarted += mini => Play(mini ? shrinkSound : growSound, 0.7f);
+        }
         if (wornHarnessModel != null)
         {
             // 体の無い 1 人称で下を見ると、宙に浮いたハーネスが視界の真ん中をふさぐので、自分の目には映さない
@@ -176,11 +187,15 @@ public class BungeeJump : MonoBehaviour
         }
     }
 
+    /// <summary>体の大きさに合わせた腰の高さ</summary>
+    float Waist => waistHeight * body.Scale;
+
     void StartFall()
     {
-        waist = body.Feet + Vector3.up * waistHeight;
+        waist = body.Feet + Vector3.up * Waist;
         velocity = body.Velocity;
-        length = cordLength;
+        length = CordLengthFor(body.Scale);
+        cordStiffness = Mathf.Lerp(miniStiffness, stiffness, Mathf.InverseLerp(PlayerBody.MiniScale, 1f, body.Scale));
         Bounces = 0;
         rising = false;
         taut = false;
@@ -194,7 +209,7 @@ public class BungeeJump : MonoBehaviour
         bool lowering = CurrentPhase == Phase.Lowering;
         if (lowering) length += lowerSpeed * dt;
         // 降ろすときは揺れないよう、ちょうど揺れが止まる強さで抑える
-        float c = lowering ? 2f * Mathf.Sqrt(stiffness) : damping;
+        float c = lowering ? 2f * Mathf.Sqrt(cordStiffness) : damping;
         Vector3 before = waist;
         bool tautNow = false;
 
@@ -208,7 +223,7 @@ public class BungeeJump : MonoBehaviour
             if (dist > length)
             {
                 Vector3 dir = d / dist;
-                a -= dir * (stiffness * (dist - length) + c * Vector3.Dot(velocity, dir));
+                a -= dir * (cordStiffness * (dist - length) + c * Vector3.Dot(velocity, dir));
                 a -= swayDamping * Vector3.ProjectOnPlane(velocity, dir);
                 tautNow = true;
             }
@@ -237,8 +252,8 @@ public class BungeeJump : MonoBehaviour
             if (!lowering && Bounces >= bouncesBeforeLowering) SetPhase(Phase.Lowering);
         }
 
-        bool landed = waist.y - waistHeight <= cushionTop;
-        if (landed) waist.y = cushionTop + waistHeight;
+        bool landed = waist.y - Waist <= cushionTop;
+        if (landed) waist.y = cushionTop + Waist;
         body.MoveBy(waist - before);
         if (landed) Land();
     }
@@ -304,7 +319,8 @@ public class BungeeJump : MonoBehaviour
         if (wornHarness.gameObject.activeSelf != attached) wornHarness.gameObject.SetActive(attached);
         if (!attached) return;
         float yaw = body.Camera.transform.eulerAngles.y;
-        wornHarness.SetPositionAndRotation(body.Feet + Vector3.up * wornHarnessHeight, Quaternion.Euler(0f, yaw, 0f));
+        wornHarness.SetPositionAndRotation(body.Feet + Vector3.up * (wornHarnessHeight * body.Scale), Quaternion.Euler(0f, yaw, 0f));
+        wornHarness.localScale = Vector3.one * body.Scale;
     }
 
     /// <summary>モデルを、見た目の真ん中が原点に来る入れ物に入れて作る（当たり判定は外す）。</summary>
@@ -331,10 +347,18 @@ public class BungeeJump : MonoBehaviour
         // ハーネスを付けている間は背中（腰の少し後ろ。顔の前を横切らないように）へ、それ以外はフックのハーネスへ
         bool attached = CurrentPhase == Phase.Harnessed || CurrentPhase == Phase.Falling || CurrentPhase == Phase.Lowering;
         Vector3 start = anchor.position;
-        Vector3 back = -Vector3.ProjectOnPlane(body.transform.forward, Vector3.up).normalized * 0.3f;
-        Vector3 end = attached ? (CurrentPhase == Phase.Harnessed ? body.Feet + Vector3.up * waistHeight : waist) + back : harness.cordPoint.position;
+        // ミニでも 12cm は後ろへ（体に合わせて縮めると、目のすぐ前を太い線が横切る）
+        Vector3 back = -Vector3.ProjectOnPlane(body.transform.forward, Vector3.up).normalized * Mathf.Max(0.3f * body.Scale, 0.12f);
+        Vector3 end = attached ? (CurrentPhase == Phase.Harnessed ? body.Feet + Vector3.up * Waist : waist) + back : harness.cordPoint.position;
         float distance = Vector3.Distance(start, end);
-        float rest = attached ? length : distance + 1.2f; // フックに掛けてある間は少したるませておく
+        float rest = attached ? (CurrentPhase == Phase.Harnessed ? CordLengthFor(body.Scale) : length) : distance + 1.2f; // フックに掛けてある間は少したるませておく
+        // ミニの体に付いている端は細くする
+        float endWidth = attached ? Mathf.Max(body.Scale, 0.25f) : 1f;
+        if (!Mathf.Approximately(endWidth, cordScale))
+        {
+            cordScale = endWidth;
+            cord.widthCurve = AnimationCurve.Linear(0f, 1f, 1f, endWidth);
+        }
         float sag = Mathf.Min(Mathf.Max(0f, rest - distance) * 0.5f, 6f);
         for (int i = 0; i < CordPoints; i++)
         {
@@ -342,6 +366,9 @@ public class BungeeJump : MonoBehaviour
             cord.SetPosition(i, Vector3.Lerp(start, end, t) + Vector3.down * (sag * 4f * t * (1f - t)));
         }
     }
+
+    /// <summary>体の大きさに合わせたロープの長さ（等身大とミニの間は補間）</summary>
+    float CordLengthFor(float scale) => Mathf.Lerp(miniCordLength, cordLength, Mathf.InverseLerp(PlayerBody.MiniScale, 1f, scale));
 
     // ---- 音と風の筋 ----
 
@@ -478,7 +505,6 @@ public class BungeeJump : MonoBehaviour
         countdown = -1f;
         shownCount = -1;
         SetText(countdownSign, "");
-        if (phase == Phase.Harnessed) length = cordLength;
         switch (phase)
         {
             case Phase.Idle:

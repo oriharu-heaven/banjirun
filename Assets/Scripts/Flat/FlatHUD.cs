@@ -14,18 +14,27 @@ public class FlatHUD : MonoBehaviour
         "マウス / 右スティック　見回す\n" +
         "Space / A　ジャンプ\n" +
         "E・左クリック / X　使う（窓・ハーネス）\n" +
+        "M / Y　ミニキャラ ⇔ 等身大（ミニは段をよじ登れる）\n" +
         "Esc　カーソルを出す　　H　この説明を消す";
 
     FirstPersonControls controls;
+    PlayerBody body;
     GUIStyle hintStyle, helpStyle, centerStyle;
     bool showHelp = true;
+    float blockedTimer;
 
-    void Awake() => controls = GetComponent<FirstPersonControls>();
+    void Awake()
+    {
+        controls = GetComponent<FirstPersonControls>();
+        body = GetComponent<PlayerBody>();
+        body.ResizeBlocked += () => blockedTimer = 2f;
+    }
 
     void Update()
     {
         var keyboard = UnityEngine.InputSystem.Keyboard.current;
         if (keyboard != null && keyboard.hKey.wasPressedThisFrame) showHelp = !showHelp;
+        blockedTimer -= Time.deltaTime;
     }
 
     void OnGUI()
@@ -43,7 +52,11 @@ public class FlatHUD : MonoBehaviour
         if (focused)
             GUI.Box(new Rect(cx - 170, Screen.height * 0.6f, 340, 44), $"E / クリック：{controls.Focused.UseHint}", hintStyle);
         if (showHelp)
-            GUI.Box(new Rect(16, 16, 520, 150), Help, helpStyle);
+            GUI.Box(new Rect(16, 16, 540, 172), Help, helpStyle);
+        if (body.IsMini)
+            GUI.Box(new Rect(Screen.width - 196, 16, 180, 40), "ミニキャラ", hintStyle);
+        if (blockedTimer > 0f)
+            GUI.Box(new Rect(cx - 230, Screen.height * 0.6f - 54, 460, 44), body.Locked ? "飛んでいる間は大きさを変えられない" : "ここでは大きくなれない（上がふさがっている）", hintStyle);
         if (!controls.CursorLocked)
             GUI.Box(new Rect(cx - 200, cy + 40, 400, 44), "クリックで操作を始める", hintStyle);
     }

@@ -13,6 +13,7 @@ using Debug = UnityEngine.Debug;
 /// 1 人称の映像（右上に外から見た様子、下に字幕）と音を mp4 にする。ffmpeg が要る。
 /// BungeeDemoRecorder（メニュー「BanjiRun/VR/6. Record Bungee Demo」「BanjiRun/画面版/3. Record Bungee Demo」）が再生前にシーンへ置く。
 /// 操作は FirstPersonControls を通すので、移動・当たり判定・ドア・ハーネス・バンジーは実際のゲームと同じ動き。
+/// mini を true にすると、最初に M キーでミニキャラになってから同じ流れを通り（段はよじ登る）、最後に等身大に戻る。
 /// </summary>
 [DefaultExecutionOrder(1000)]
 public class BungeeDemoDirector : MonoBehaviour
@@ -23,6 +24,7 @@ public class BungeeDemoDirector : MonoBehaviour
     public int height = 720;
     public int fps = 30;
     public float timeLimit = 150f;
+    public bool mini;
 
     const int AvatarLayer = 29;   // 外からのカメラにだけ映すプレイヤーの体
     const int CaptionLayer = 28;  // 字幕用カメラにだけ映す文字
@@ -115,17 +117,24 @@ public class BungeeDemoDirector : MonoBehaviour
 
         // ホールの中、窓から 4 m ほどの所から
         body.TeleportFeetTo(aisle - outward * 3.6f, Quaternion.LookRotation(outward).eulerAngles.y);
-        Caption($"BanjiRun ― 窓の外でバンジージャンプ（{(body is VRPlayerBody ? "VR 版" : "画面版")}）");
+        string version = body is VRPlayerBody ? "VR 版" : "画面版";
+        Caption(mini ? $"BanjiRun ― ミニキャラでバンジー（{version}）" : $"BanjiRun ― 窓の外でバンジージャンプ（{version}）");
         yield return LookAt(glassCenter + Vector3.up * 0.4f, 1.5f);
+        if (mini)
+        {
+            Caption("M キーでミニキャラに（身長 25cm）");
+            yield return Resize();
+            yield return LookAt(glassCenter + Vector3.up * 0.4f, 1.0f);
+        }
 
-        Caption("① 窓まで歩いて、窓を開ける");
+        Caption(mini ? "① 舞台によじ登って、窓を開ける" : "① 窓まで歩いて、窓を開ける");
         yield return WalkTo(beforeStage);
         yield return WalkTo(windowInside);
         yield return LookAt(glassCenter, 0.7f);
         yield return Use();
         yield return Wait(1.2f);
 
-        Caption("② バルコニーへ出て、階段でジャンプ台へ");
+        Caption(mini ? "② バルコニーへ出て、階段を 1 段ずつよじ登る" : "② バルコニーへ出て、階段でジャンプ台へ");
         yield return WalkTo(Flat(windowInside + outward * 1.3f) + floor);
         yield return WalkTo(balcony);
         yield return WalkTo(Flat(balcony + along * 0.6f) + Vector3.up * balcony.y);
@@ -143,7 +152,7 @@ public class BungeeDemoDirector : MonoBehaviour
         yield return WalkTo(onGrating);
         yield return LookAt(onGrating + outward * 0.6f + Vector3.down * 3f, 1.6f);
 
-        Caption("⑤ 細い板の先へ。下まで 23m");
+        Caption(mini ? "⑤ 細い板の先へ。下まで 23m（ミニの目には 150m）" : "⑤ 細い板の先へ。下まで 23m");
         Vector3 edge = bungee.jumpEdge.position - outward * 0.25f;
         yield return WalkTo(Flat(edge) + deck);
         yield return LookAt(bungee.cushion.position, 1.8f);
@@ -176,22 +185,31 @@ public class BungeeDemoDirector : MonoBehaviour
             yield return LookStep(bungee.cushion.position, 2f);
 
         Caption("⑩ クッションに着地！");
+        Debug.Log($"[Demo]   着地した足 {body.Feet:F2} / クッションの中心 {bungee.cushion.position:F2}（ずれ {Flat(body.Feet - bungee.cushion.position).magnitude:F2}m）/ 光る輪 {bungee.returnPad.position:F2}");
         yield return LookAt(bungee.returnPad.position + outward * 3f, 1.4f);
         yield return Wait(0.8f);
 
         Caption("⑪ 光る輪に入ると、バルコニーへ戻る");
         yield return LookAt(bungee.returnPad.position, 0.8f);
         t = 0f;
-        while (bungee.CurrentPhase == BungeeJump.Phase.Landed && t < 6f)
+        while (bungee.CurrentPhase == BungeeJump.Phase.Landed && t < 15f)
         {
             yield return WalkStep(bungee.returnPad.position);
             t += Time.deltaTime;
         }
+        if (bungee.CurrentPhase == BungeeJump.Phase.Landed)
+            Debug.LogWarning($"[Demo] 光る輪に入れなかった: 足 {body.Feet:F2} / 光る輪 {bungee.returnPad.position:F2}");
         commands = default;
 
         Caption("おかえり！ もう一回飛べる");
         yield return LookAt(Flat(balcony + along * 3f + outward * 2f) + deck + Vector3.up * 1.2f, 1.5f);
         yield return Wait(1.5f);
+        if (mini)
+        {
+            Caption("M キーで等身大に戻る");
+            yield return Resize();
+            yield return Wait(0.6f);
+        }
     }
 
     // ---- 操作の小道具（FirstPersonControls に入力を渡す） ----
@@ -201,6 +219,7 @@ public class BungeeDemoDirector : MonoBehaviour
         if (controls == null) return;
         controls.ScriptedCommands = commands;
         commands.use = false;
+        commands.resize = false;
         commands.jump = false;
         commands.look = Vector2.zero;
         if (Time.time > timeLimit && !finished) Finish(false, "時間切れ");
@@ -211,6 +230,13 @@ public class BungeeDemoDirector : MonoBehaviour
     IEnumerator Wait(float seconds)
     {
         for (float t = 0f; t < seconds; t += Time.deltaTime) yield return null;
+    }
+
+    IEnumerator Resize()
+    {
+        commands.resize = true;
+        yield return null;
+        yield return Wait(1.2f);
     }
 
     IEnumerator Use()
@@ -391,11 +417,13 @@ public class BungeeDemoDirector : MonoBehaviour
 
         // 外からのカメラは、クレーンのようにプレイヤーの高さへついていく
         avatar.SetPositionAndRotation(body.Feet, Quaternion.Euler(0f, body.transform.eulerAngles.y, 0f));
+        avatar.localScale = Vector3.one * body.Scale;
+        spectator.fieldOfView = 42f * Mathf.Lerp(0.45f, 1f, Mathf.InverseLerp(PlayerBody.MiniScale, 1f, body.Scale)); // ミニのときは寄って映す
         float follow = 1f - Mathf.Exp(-3f * Time.deltaTime);
         Vector3 spectatorPosition = spectator.transform.position;
         spectatorPosition.y = frames == 0 ? body.Feet.y + 2.5f : Mathf.Lerp(spectatorPosition.y, body.Feet.y + 2.5f, follow);
         spectator.transform.position = spectatorPosition;
-        Quaternion look = Quaternion.LookRotation(body.Feet + Vector3.up * 1f - spectatorPosition);
+        Quaternion look = Quaternion.LookRotation(body.Feet + Vector3.up * body.Scale - spectatorPosition);
         spectator.transform.rotation = frames == 0 ? look : Quaternion.Slerp(spectator.transform.rotation, look, 1f - Mathf.Exp(-4f * Time.deltaTime));
 
         // 1 人称 → 右上に外からの映像 → 下に字幕

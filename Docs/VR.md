@@ -129,9 +129,9 @@ Assets/Scripts/
 
 ## ブラウザ版（unityroom）
 
-画面版のシーンを WebGL でビルドし、unityroom に**非公開**で上げてある: https://unityroom.com/games/banjirun （2026-10-18。投稿者のいのべえさんだけが開ける）。
+画面版のシーンを WebGL でビルドし、unityroom に上げてある: https://unityroom.com/games/banjirun （2026-10-18 に非公開で登録、2026-10-19 に見た目を作り直した版に上げ直した。公開状態は unityroom の「公開設定」で決める。2026-10-19 時点では限定公開＝URL を知っている人だけ開ける）。
 
-- ビルド: 画面版の 5.（バッチなら `-buildTarget WebGL -executeMethod FlatSceneBuilder.BuildWebGL`）。unityroom の決まりに合わせて Gzip・解凍のフォールバックなし・WebGL2・ファイル名はハッシュにしない、表示 960×540。初回はテクスチャの読み直しとシェーダーで 20 分ほど。約 35MB（data 26MB・wasm 10MB）
+- ビルド: 画面版の 5.（バッチなら `-buildTarget WebGL -executeMethod FlatSceneBuilder.BuildWebGL`）。unityroom の決まりに合わせて Gzip・解凍のフォールバックなし・WebGL2・ファイル名はハッシュにしない、表示 960×540。初回はテクスチャの読み直しとシェーダーで 20 分ほど。約 46MB（data 38MB・wasm 10MB。Tripo のモデルのテクスチャで増えた）
 - 画質はブラウザ向けの Mobile 段階（Quest と同じ）。XR は使わない（XR Plug-in Management の WebGL は空）
 - 上げ方は LG の作品と同じ（`LG-Template/Docs/unityroom.md` の「AI が上げる時」）: `Build/` の 4 ファイルを 9MB ずつ切ってページの中でつなぎ直し、SHA-256 を比べてから受け口に渡す
 - unityroom の設定: Unity のバージョンは **6000.6.x**（6.7 は一覧にない。6.6 で動くのを確かめた）、表示 960×540・アスペクト比を維持、メモリ 512MB、紹介文と操作方法を入れた。アイコン・使用アセットの欄はまだ

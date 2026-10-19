@@ -401,14 +401,37 @@ public class BungeeDemoDirector : MonoBehaviour
         Debug.Log($"[Demo] 録画開始: {fullPath}");
     }
 
+    const string JumperModelPath = "Assets/Bungee/Models/Bungee_Jumper/Bungee_Jumper.fbx"; // Tripo で作った飛ぶ人（無ければ筒と球で作る）
+
     void CreateAvatar()
     {
         avatar = new GameObject("DemoAvatar").transform;
+        var jumper = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(JumperModelPath);
+        if (jumper != null)
+        {
+            // 身長 1.65m、足の真ん中を原点に、前（+Z）を体の向きに
+            var model = Instantiate(jumper, avatar);
+            foreach (var c in model.GetComponentsInChildren<Collider>(true)) Destroy(c);
+            Bounds b = AvatarBounds(model);
+            model.transform.localScale *= 1.65f / Mathf.Max(b.size.y, 0.01f);
+            b = AvatarBounds(model);
+            model.transform.position += avatar.position - new Vector3(b.center.x, b.min.y, b.center.z);
+            foreach (var t in model.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = AvatarLayer;
+            return;
+        }
         var shirt = Part(PrimitiveType.Capsule, avatar, new Vector3(0f, 1.05f, 0f), new Vector3(0.42f, 0.42f, 0.3f), new Color(0.2f, 0.45f, 0.95f));
         Part(PrimitiveType.Capsule, avatar, new Vector3(-0.11f, 0.42f, 0f), new Vector3(0.16f, 0.42f, 0.16f), new Color(0.15f, 0.15f, 0.2f));
         Part(PrimitiveType.Capsule, avatar, new Vector3(0.11f, 0.42f, 0f), new Vector3(0.16f, 0.42f, 0.16f), new Color(0.15f, 0.15f, 0.2f));
         Part(PrimitiveType.Sphere, avatar, new Vector3(0f, 1.62f, 0f), Vector3.one * 0.24f, new Color(1f, 0.82f, 0.68f));
         shirt.name = "Body";
+    }
+
+    static Bounds AvatarBounds(GameObject go)
+    {
+        var renderers = go.GetComponentsInChildren<Renderer>();
+        Bounds b = renderers.Length > 0 ? renderers[0].bounds : new Bounds(go.transform.position, Vector3.zero);
+        foreach (var r in renderers) b.Encapsulate(r.bounds);
+        return b;
     }
 
     GameObject Part(PrimitiveType type, Transform parent, Vector3 position, Vector3 scale, Color color)

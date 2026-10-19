@@ -18,6 +18,7 @@ Assets/Scripts/
     IUsable.cs               手で使える物（ドア・窓・ハーネス）の共通の形
     FirstPersonControls.cs   キーボード・マウス・ゲームパッドの一人称操作（画面版はいつも、VR 版はヘッドセットが無いときだけ）
     BungeeJump.cs, BungeeHarness.cs, CombinedMeshLightmap.cs
+    LedSign.cs, SpinPulse.cs  電光掲示板（点滅・色替え・流れる文字）と、戻る輪の回る光
   VR/        VR だけ（XRI・OpenXR を使う）
     VRPlayerBody.cs          XR Origin の体（移動は XRI のスティック・テレポート。ミニキャラは XR Origin ごと縮める）
     VRUseOnGrab.cs           コントローラーでつかんだら IUsable を使う
@@ -28,7 +29,7 @@ Assets/Scripts/
     FlatHUD.cs               照準・使える物の案内・操作説明（H キーで出し入れ）
     FlatCameraEffects.cs     落ちる速さで視野が広がる・ロープが張る／着地で画面が揺れる（VR では酔うので使わない）
     Editor/                  FlatSceneBuilder（画面版のシーンと Mac アプリ）
-  Editor/    共通のシーン作り: GameSceneBuilder（部屋 + バンジー + 軽量化 + ベイク）・BungeeBuilder・SceneOptimizer・SceneMeshCombiner・BungeeDemoRecorder
+  Editor/    共通のシーン作り: GameSceneBuilder（部屋 + バンジー + 軽量化 + ベイク）・BungeeBuilder（.Props.cs に部品作り）・SceneOptimizer・SceneMeshCombiner・BungeeDemoRecorder・BungeeShowcase
   Demo/      BungeeDemoDirector（自動操作で録画。エディター専用）
   Prototype/ 小人の試作。Door は IUsable にした（VR・画面版で使えるように）
 ```
@@ -53,8 +54,9 @@ Assets/Scripts/
 | `Assets/Samples/XR Interaction Toolkit/` | XRI のサンプル（Starter Assets・XR Interaction Simulator） |
 | `Assets/XR/`, `Assets/XRI/` | XR Plug-in Management・OpenXR・XRI の設定 |
 | `Assets/Bungee/Audio/` | バンジーの音（出どころは `CREDITS.txt`） |
-| `Assets/Bungee/Materials/`, `Assets/Bungee/Textures/` | バンジーの台・クッション・格子の床などの素材（シーンを作ると作られる） |
-| `Assets/Bungee/Models/Harness/` | 全身用ハーネスの 3D モデル（Tripo で生成。Pro プラン・非公開・商用利用可。約 2.1 万三角形、テクスチャは Quest 向けに 1024 まで） |
+| `Assets/Bungee/Materials/`, `Assets/Bungee/Textures/` | バンジーの台・格子の床・縞鋼板・黄黒の縞・LED の点・電球の光・ロープの編み目などの素材と模様（シーンを作るとコードで作り直される） |
+| `Assets/Bungee/Shaders/` | 電光掲示板の文字（`LedText`）・縁の流れる電球（`ChaseBulbs`）・目の近くで透けるロープ（`Rope`） |
+| `Assets/Bungee/Models/` | Tripo（H3.1、Pro プラン・非公開・商用利用可）で作った 3D モデル。テクスチャは Quest 向けに 1024 まで。`Harness`（全身用ハーネス）・`Bungee_Cushion`（エアクッション）・`Bungee_Plank`（飛び込み板）・`Bungee_Pulley`（ロープの付け根の滑車）・`Bungee_Staff`（係の人）・`Bungee_Jumper`（録画で外から見た体。ゲームでは使わない）。1 体 7,600〜9,700 面 |
 | `Assets/Fonts/MPLUSRounded1c-Bold.ttf` | 案内板と画面版の表示の日本語フォント（M PLUS Rounded 1c、SIL Open Font License 1.1） |
 
 `PrototypeSceneBuilder.cs` は、部屋を作る部分を `CreateRoom()` として切り出し、VR・画面版のシーンからも使えるようにした（小人の試作の動きは同じ）。ホール東の窓（`EastWin_Sash_02`）をドアの一覧に足した。
@@ -62,6 +64,8 @@ Assets/Scripts/
 ## メニュー
 
 **BanjiRun/Build All Scenes (VR + 画面版)** — 2 つのシーンを両方作り直す（ベイク込みで 5 分ほど）
+
+**BanjiRun/Bungee Showcase** — バンジーのまわりを決まった 10 か所から撮って `Builds/Showcase/latest/` に保存する（見た目を直す前と後を比べる用。バッチなら `-executeMethod BungeeShowcase.RunBatch -showcaseLabel <名前>`）
 
 **BanjiRun/VR**
 1. **Import XRI Samples** — XRI のサンプルを取り込む（済み）
@@ -161,13 +165,21 @@ Assets/Scripts/
 ホール東の窓（南から 2 枚目、`EastWin_Sash_02`）はドアと同じく開け閉めできる。開けて外のバルコニーへ出ると、バンジージャンプの台がある。建物は通りから約 23m の高さ。
 
 1. 窓を開ける（グリップ / E）。窓のとなりに案内板
-2. バルコニーの階段（3 段）でジャンプ台に上がる。手すりより外は**格子の床**で、足元から下の通りが透けて見える
+2. バルコニーの鉄骨の階段（3 段、格子の踏み板）でジャンプ台に上がる。手すりより外は**格子の床**で、足元から下の通りが透けて見える。台の先は板の両わきにも手すりがあり、飛べるのは板からだけ
 3. フックの全身用ハーネスをつかむ（グリップ / E）と、カチャッと体に付いてロープがつながる（下を見ると腰から胸にハーネスが見える）。ここから**心臓の音**が鳴り始める
 4. 台の先の**手すりのない細い板**（幅 50cm・長さ 1.35m）へ進む。板は先に行くほどしなって揺れ、ギシギシきしむ。心臓の音は速く大きくなる
-5. 板の先に立つと、目の前の空中に 3・2・1・「バンジー！」と出て、係の人の声で数える（押し出しはしない）
+5. 板の先に立つと、腕の先に吊った大きな電光掲示板に 3・2・1・「バンジー！」と出て、係の人の声で数える（押し出しはしない）
 6. 板の先から落ちると、約 1.3 秒の自由落下（最高で時速 50km ほど）。風の音が大きくなり、まわりを風の筋が流れる。ロープ（長さ 13m のばね）は**クッションの約 1m 上**でピンと張って引き戻す
 7. 2 回弾んだら、一番上でゆっくり降ろされる
 8. 下の歩道のクッション（4m 四方・高さ 1.6m のエアマット）に着地すると、歓声と「ナイスジャンプ！」。クッションの上の光る輪に入ると、バルコニーの窓の前へ戻る
+
+**見た目**（2026-10-19 に作り直した。比べた画像は `Builds/Showcase/before_after.jpg`）:
+- 門と腕は黄色い鉄骨のトラス、床は縞鋼板、柱の根元・段の先・足元の板は黄黒の縞。細かい部品は素材ごとに 1 つのメッシュにまとめてある（Quest で重くならないように）
+- 案内はすべて電光掲示板（`LedSign`）: 黒い LED の板・光る文字・LED の点の網・縁の流れる電球。文字が変わると点滅し、色が順に変わる。門の上には「★ BUNGEE JUMP 23m ★ 窓の外でバンジー！」が流れる看板（通りからも見える）。カウントダウンと地上の案内は裏にも文字がある
+- 係の人（Tripo）がハーネスのフックの側に立っていて、声もそこから出る。体には当たり判定がある
+- ロープは編み目の模様で、目から 40cm〜1m の所で透けて消える（板の上を歩く間、ロープは顔の前を横切るため）
+- 戻る輪は、光る輪・回る内側の輪・上に消える光の筒・のぼる光の粒
+- Tripo のモデルが無いときは、今までの箱や筒の形で代わりを作る（`BungeeBuilder` のログに「モデル: …あり／なし」と出る）
 
 ハーネスを付けずに落ちても、クッションで受け止める。ロープの強さ・弾む回数・降ろす速さ・板のしなりは `BungeeJump` のインスペクター（`cordLength` `stiffness` `bouncesBeforeLowering` `lowerSpeed` `plankDip` など）で変えられる。台・板・クッションの位置は `BungeeBuilder` が部屋モデルのバルコニー・窓・道路から決める（3. で作り直される）。クッションの場所に止まっていた車（`Car_00`）は、3. で道路に沿って 6m ずらしている。
 

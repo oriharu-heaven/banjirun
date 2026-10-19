@@ -175,7 +175,8 @@ public class BungeeJump : MonoBehaviour
             {
                 shownCount = n;
                 SetText(countdownSign, n > 0 ? n.ToString() : "バンジー！");
-                if (countdownSign != null) countdownSign.transform.localScale = countdownScale * 1.6f;
+                // 電光掲示板（LedSign）なら掲示板が自分で点滅する。ただの文字なら、大きくしてから戻す
+                if (countdownSign != null && countdownSign.GetComponent<LedSign>() == null) countdownSign.transform.localScale = countdownScale * 1.6f;
                 if (voiceCount != null && 3 - n < voiceCount.Length) PlayVoice(voiceCount[3 - n], 1f);
             }
         }

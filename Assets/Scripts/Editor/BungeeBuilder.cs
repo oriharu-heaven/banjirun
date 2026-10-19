@@ -86,8 +86,9 @@ public static partial class BungeeBuilder
             float top = balconyTop + 0.29f * (i + 1), v0 = 0.13f + 0.35f * i, v1 = 0.48f + 0.35f * i;
             ColliderBox(root, $"Step_{i}", P(0.05f, v0, balconyTop), P(1.15f, v1, top));
             treads.Box(P(0.6f, (v0 + v1) / 2f, top - 0.02f), new Vector3(1.06f, 0.04f, v1 - v0), Quaternion.LookRotation(along));
-            stripes.Box(P(0.6f, v0 + 0.025f, top - 0.019f), new Vector3(1.08f, 0.042f, 0.05f), Quaternion.LookRotation(along));
-            yellow.Beam(P(1.12f, v0 + 0.08f, top), P(1.12f, v0 + 0.08f, top + 0.95f), 0.04f);
+            // 段の先の縞は、踏み板より少し大きく（前と下の面が踏み板と同じ所に来るとチラつく）
+            stripes.Box(P(0.6f, v0 + 0.024f, top - 0.0195f), new Vector3(1.08f, 0.047f, 0.052f), Quaternion.LookRotation(along));
+            yellow.Beam(P(1.12f, v0 + 0.08f, top - 0.004f), P(1.12f, v0 + 0.08f, top + 0.95f), 0.04f);
         }
         foreach (float u in new[] { 0.08f, 1.12f })
             steel.Beam(P(u, 0.03f, balconyTop + 0.08f), P(u, PlatformV0 + 0.02f, PlatformTop - 0.13f), 0.05f, 0.22f);
@@ -96,11 +97,14 @@ public static partial class BungeeBuilder
         yellow.Beam(P(1.12f, PlatformV0 - 0.02f, PlatformTop + 1.02f), P(1.3f, PlatformV0 + 0.03f, PlatformTop + 1.05f), 0.045f);
 
         // ---- ジャンプ台: 縞鋼板の床と、手すりの外の格子の床。下に桁と斜めの支え ----
-        Box(root, "Deck", P(0.04f, PlatformV0, PlatformTop - 0.1f), P(GratingStart, PlatformV1, PlatformTop), "DiamondPlate");
-        Box(root, "Deck_Grating", P(GratingStart, PlatformV0, PlatformTop - 0.05f), P(PlatformReach, PlatformV1, PlatformTop), "Grating");
+        // 面がちょうど同じ所に来るとチラつく（Z ファイティング）ので、接する所は数 mm ずらす（OverlapCheck で確かめる）:
+        // 床はバルコニーの手すりの外の面より 4mm 外まで、格子は床の中から始めて 3mm 低く、縁の材は床・格子の横の面より 2mm 外に
+        Box(root, "Deck", P(0.04f, PlatformV0, PlatformTop - 0.1f), P(GratingStart + 0.004f, PlatformV1, PlatformTop), "DiamondPlate");
+        // （下の面はバルコニーの手すりの上の面より 6mm 上）
+        Box(root, "Deck_Grating", P(GratingStart - 0.004f, PlatformV0 + 0.004f, PlatformTop - 0.044f), P(PlatformReach, PlatformV1 - 0.004f, PlatformTop - 0.003f), "Grating");
         foreach (float v in new[] { PlatformV0 + 0.03f, PlatformV1 - 0.03f })
-            yellow.Beam(P(0.04f, v, PlatformTop - 0.065f), P(PlatformReach, v, PlatformTop - 0.065f), 0.06f, 0.12f);
-        stripes.Beam(P(PlatformReach - 0.03f, PlatformV0, PlatformTop - 0.065f), P(PlatformReach - 0.03f, PlatformV1, PlatformTop - 0.065f), 0.06f, 0.12f);
+            yellow.Beam(P(0.035f, v, PlatformTop - 0.072f), P(PlatformReach - 0.004f, v, PlatformTop - 0.072f), 0.068f, 0.12f);
+        stripes.Beam(P(PlatformReach - 0.03f, PlatformV0 - 0.008f, PlatformTop - 0.0715f), P(PlatformReach - 0.03f, PlatformV1 + 0.008f, PlatformTop - 0.0715f), 0.068f, 0.127f);
         foreach (float v in new[] { PlatformV0 + 0.16f, PlatformV1 - 0.16f })
         {
             steel.Beam(P(0.04f, v, PlatformTop - 0.21f), P(PlatformReach, v, PlatformTop - 0.21f), 0.08f, 0.16f);
@@ -115,20 +119,23 @@ public static partial class BungeeBuilder
         // 手すり（階段側はバルコニーの上だけ開けておく）。台の先は、板の両わきにも手すりを付けて、板からだけ飛べるようにする
         Railing(yellow, stripes, root, "Rail_A", P(1.3f, PlatformV0 + 0.03f, PlatformTop), P(PlatformReach - 0.02f, PlatformV0 + 0.03f, PlatformTop));
         Railing(yellow, stripes, root, "Rail_B", P(0.1f, PlatformV1 - 0.03f, PlatformTop), P(PlatformReach - 0.02f, PlatformV1 - 0.03f, PlatformTop));
-        Railing(yellow, stripes, root, "Rail_FrontA", P(PlatformReach - 0.02f, PlatformV0 + 0.03f, PlatformTop), P(PlatformReach - 0.02f, vMid - PlankWidth / 2f, PlatformTop));
-        Railing(yellow, stripes, root, "Rail_FrontB", P(PlatformReach - 0.02f, vMid + PlankWidth / 2f, PlatformTop), P(PlatformReach - 0.02f, PlatformV1 - 0.03f, PlatformTop));
+        // 角の柱は横の手すりのものを使い、横棒は 4mm ずらす（同じ所に 2 本あるとチラつく）
+        Railing(yellow, stripes, root, "Rail_FrontA", P(PlatformReach - 0.02f, PlatformV0 + 0.03f, PlatformTop), P(PlatformReach - 0.02f, vMid - PlankWidth / 2f, PlatformTop), skipFirstPost: true, lift: 0.004f);
+        Railing(yellow, stripes, root, "Rail_FrontB", P(PlatformReach - 0.02f, vMid + PlankWidth / 2f, PlatformTop), P(PlatformReach - 0.02f, PlatformV1 - 0.03f, PlatformTop), skipLastPost: true, lift: 0.004f);
 
         // ---- ロープを吊るす門: トラスの柱 2 本・横の梁・外へ張り出す腕（先にカウントダウンの掲示板を吊る）・腕を支える柱とワイヤー ----
         foreach (float v in new[] { PlatformV0 + 0.1f, PlatformV1 - 0.1f })
         {
-            Truss(yellow, P(2.95f, v, PlatformTop), P(2.95f, v, armY + 0.1f), 0.2f, along);
-            stripes.Box(P(2.95f, v, PlatformTop + 0.25f), new Vector3(0.23f, 0.5f, 0.23f), Quaternion.LookRotation(outward));
-            steel.Box(P(2.95f, v, PlatformTop + 0.01f), new Vector3(0.34f, 0.02f, 0.34f), Quaternion.LookRotation(outward));
-            ColliderBox(root, $"Gantry_Post_{v:F2}", P(2.84f, v - 0.11f, PlatformTop), P(3.06f, v + 0.11f, armY));
+            Truss(yellow, P(2.95f, v, PlatformTop), P(2.95f, v, armY - 0.142f), 0.2f, along); // 横の梁の下で止める（梁の中を通さない）
+            stripes.Box(P(2.95f, v, PlatformTop + 0.257f), new Vector3(0.24f, 0.5f, 0.24f), Quaternion.LookRotation(outward));
+            steel.Box(P(2.95f, v, PlatformTop + 0.011f), new Vector3(0.3f, 0.02f, 0.3f), Quaternion.LookRotation(outward)); // 正面の手すりの足元の板に届かない大きさ
+            ColliderBox(root, $"Gantry_Post_{v:F2}", P(2.84f, v - 0.11f, PlatformTop), P(3.06f, v + 0.11f, armY - 0.12f));
         }
-        Truss(yellow, P(2.95f, PlatformV0 + 0.1f, armY), P(2.95f, PlatformV1 - 0.1f, armY), 0.2f, Vector3.up);
-        Truss(yellow, P(2.95f, vMid, armY), P(tip + 1.6f, vMid, armY), 0.22f, Vector3.up);
-        Truss(yellow, P(2.95f, vMid, armY + 0.11f), P(2.95f, vMid, armY + 1.05f), 0.16f, outward);
+        Truss(yellow, P(2.95f, PlatformV0 + 0.1f, armY), P(2.95f, PlatformV1 - 0.1f, armY), 0.21f, Vector3.up); // 柱（0.2）と太さを変えて、太い材の面を重ねない
+        // 腕と、腕を支える柱は、横の梁の中を通さない（トラスどうしが中で交わると、どこかで材の面が同じ所に重なってチラつく）。
+        // 腕は梁の外側から、柱は梁の上から（どちらも数 mm 離す）
+        Truss(yellow, P(3.095f, vMid, armY), P(tip + 1.6f, vMid, armY), 0.22f, Vector3.up);
+        Truss(yellow, P(2.95f, vMid, armY + 0.14f), P(2.95f, vMid, armY + 1.05f), 0.16f, outward);
         steel.Rod(P(2.95f, vMid, armY + 1.05f), P(tip + 0.1f, vMid, armY + 0.11f), 0.012f);
         steel.Rod(P(2.95f, vMid, armY + 1.05f), P(tip + 1.55f, vMid, armY + 0.11f), 0.012f);
 
@@ -168,7 +175,7 @@ public static partial class BungeeBuilder
             steel.Beam(bannerCenter + along * dv + Vector3.down * 0.2f, P(2.95f, vMid + dv, armY + 0.1f), 0.03f);
 
         // ハーネスを掛けるフック（柱を伸ばして、上に案内を付ける）
-        Cylinder(root, "HookPost", P(1.5f, PlatformV1 - 0.08f, PlatformTop), 2.45f, 0.05f, "Metal");
+        Cylinder(root, "HookPost", P(1.5f, PlatformV1 - 0.08f, PlatformTop - 0.006f), 2.456f, 0.05f, "Metal");
         Beam(root, "HookArm", P(1.5f, PlatformV1 - 0.08f, PlatformTop + 1.85f), P(1.5f, PlatformV1 - 0.3f, PlatformTop + 1.85f), 0.05f, "Metal");
         var harness = CreateHarness(root, P(1.5f, PlatformV1 - 0.26f, PlatformTop + 1.32f));
         LedBoard(root, "HarnessSign", "ハーネスをつかんで付ける\n（グリップ / E キー）", P(1.5f, PlatformV1 - 0.45f, PlatformTop + 2.2f), outward, 0.07f,
@@ -297,17 +304,20 @@ public static partial class BungeeBuilder
     }
 
     /// <summary>手すり（柱・上の横棒・中の横棒・足元の縞の板）と、すり抜けないための当たり判定。a・b は床の高さの両端。</summary>
-    static void Railing(Parts yellow, Parts stripes, Transform root, string name, Vector3 a, Vector3 b)
+    static void Railing(Parts yellow, Parts stripes, Transform root, string name, Vector3 a, Vector3 b,
+        bool skipFirstPost = false, bool skipLastPost = false, float lift = 0f)
     {
         int posts = Mathf.Max(1, Mathf.CeilToInt(Vector3.Distance(a, b) / 0.8f));
         for (int i = 0; i <= posts; i++)
         {
+            if ((i == 0 && skipFirstPost) || (i == posts && skipLastPost)) continue;
             Vector3 p = Vector3.Lerp(a, b, i / (float)posts);
-            yellow.Beam(p, p + Vector3.up * 1.05f, 0.045f);
+            yellow.Beam(p + Vector3.down * 0.01f, p + Vector3.up * 1.05f, 0.045f); // 柱の下は床に少し埋める
         }
-        yellow.Beam(a + Vector3.up * 1.05f, b + Vector3.up * 1.05f, 0.05f);
-        yellow.Beam(a + Vector3.up * 0.52f, b + Vector3.up * 0.52f, 0.035f);
-        stripes.Beam(a + Vector3.up * 0.06f, b + Vector3.up * 0.06f, 0.014f, 0.12f);
+        Vector3 l = Vector3.up * lift;
+        yellow.Beam(a + Vector3.up * 1.05f + l, b + Vector3.up * 1.05f + l, 0.05f);
+        yellow.Beam(a + Vector3.up * 0.52f + l, b + Vector3.up * 0.52f + l, 0.035f);
+        stripes.Beam(a + Vector3.up * 0.064f + l, b + Vector3.up * 0.064f + l, 0.014f + lift, 0.12f); // 足元の板は床から浮かせる
         Vector3 min = Vector3.Min(a, b) - new Vector3(0.03f, 0f, 0.03f), max = Vector3.Max(a, b) + new Vector3(0.03f, 1.1f, 0.03f);
         ColliderBox(root, name + "_Collider", min, max);
     }

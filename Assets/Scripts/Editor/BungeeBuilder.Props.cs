@@ -120,11 +120,18 @@ public static partial class BungeeBuilder
             for (int k = 0; k < 4; k++)
             {
                 Vector3 a = corners[k], b = corners[(k + 1) % 4];
-                parts.Beam(p0 + a, p0 + b, lace);
+                // となりの面の横の材は太さを変える（角で交わる所で、上下の面が同じ高さに重ならないように）。
+                // 両端は角より少し伸ばして太い材の中に隠す（角でちょうど終わると、端の面がとなりの面の斜めの材の面と並ぶ）
+                // 伸ばす長さは、端の面が近くの面（となりの面の横の材・斜めの材・太い材）のちょうど間に来るように（太さ 0.16m でも 2.2mm 離れる）
+                Vector3 ab = (b - a).normalized * (lace * (k % 2 == 0 ? 0.51f : 0.297f));
+                parts.Beam(p0 + a - ab, p0 + b + ab, k % 2 == 0 ? lace : lace * 0.65f);
                 if (i == segments) continue;
+                // 斜めの材は横の材より細くし、1 本おきに面の外・内へ少しずらす（継ぎ目で面が同じ所に重なるとチラつく）
                 Vector3 p1 = from + axis * ((i + 1) / (float)segments);
-                if ((i + k) % 2 == 0) parts.Beam(p0 + a, p1 + b, lace);
-                else parts.Beam(p0 + b, p1 + a, lace);
+                // 外側の面が、横の材の面と太い材の面のちょうど間に来るように（太さ 0.16m のトラスでも面どうしが 2.8mm 離れる）
+                Vector3 faceOut = (a + b).normalized * (lace * 0.394f * ((i % 2 == 0) ? 1f : -1f));
+                if ((i + k) % 2 == 0) parts.Beam(p0 + a + faceOut, p1 + b + faceOut, lace * 0.6f);
+                else parts.Beam(p0 + b + faceOut, p1 + a + faceOut, lace * 0.6f);
             }
         }
     }
@@ -182,7 +189,8 @@ public static partial class BungeeBuilder
         var frame = new Parts();
         Quaternion rot = root.rotation;
         Vector3 L(float x, float y, float z) => root.TransformPoint(new Vector3(x, y, z));
-        frame.Box(L(0f, 0f, depth / 2f + 0.008f), new Vector3(width + 0.06f, height + 0.06f, depth), rot);
+        // 黒い箱は、LED の板より後ろ（表は 4mm 奥、裏も 4mm 手前）で、縁より内側の大きさ（面が板や縁と同じ所に来るとチラつく）
+        frame.Box(L(0f, 0f, depth / 2f + 0.012f), new Vector3(width + 0.03f, height + 0.03f, depth - 0.008f), rot);
         float bezel = Mathf.Clamp(em * 0.35f, 0.025f, 0.08f);
         foreach (float z in style.doubleSided ? new[] { 0.002f, depth + 0.016f } : new[] { 0.002f })
         {

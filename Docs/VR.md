@@ -65,6 +65,8 @@ Assets/Scripts/
 
 **BanjiRun/Build All Scenes (VR + 画面版)** — 2 つのシーンを両方作り直す（ベイク込みで 5 分ほど）
 
+**BanjiRun/Check Overlapping Surfaces** — 重なった面（Z ファイティング＝チラつき）を探す。VR 版・画面版のシーンで、バンジーの物（BungeeBuilder が作る物）が関わる重なりを数え、一覧を `Builds/OverlapCheck.txt` に書く（バッチなら `-executeMethod OverlapCheck.RunBatch`。重なりがあれば終了コード 1）。**3D の物を作った・動かした後は必ず流し、0 組にしてから報告する**（2026-10-19 作者。階段がチラついたため）。接する面・重ねる面は 4mm 以上ずらす（床に置く物は少し埋める、縁の材は少し外に出す、トラスや手すりは角で材を通さず端を太い材に隠す、看板の表面は枠から離す）。LG の作品には同じ物が `LGOverlapCheck` として入っている
+
 **BanjiRun/Bungee Showcase** — バンジーのまわりを決まった 10 か所から撮って `Builds/Showcase/latest/` に保存する（見た目を直す前と後を比べる用。バッチなら `-executeMethod BungeeShowcase.RunBatch -showcaseLabel <名前>`）
 
 **BanjiRun/VR**

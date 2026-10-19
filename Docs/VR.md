@@ -35,7 +35,7 @@ Assets/Scripts/
 ```
 
 - シーンは 2 つ: `VR_Prototype.unity`（XR Origin）と `Flat_Prototype.unity`（画面版のプレイヤー）。どちらも `GameSceneBuilder` が同じ部屋とバンジーを作り、プレイヤーだけを `VRSceneBuilder` / `FlatSceneBuilder` が置く
-- VR だけの物（テレポート先・つかむ仕組み・ビネット）は `VRSceneBuilder` が足す。画面だけの物（照準・視野・揺れ）は `FlatSceneBuilder` が足す
+- VR だけの物（テレポート先・つかむ仕組み）は `VRSceneBuilder` が足す。画面だけの物（照準・視野・揺れ）は `FlatSceneBuilder` が足す
 - ビルドもシーンを分ける: Quest の APK は VR シーンだけ、Mac アプリは画面版のシーンだけ（ビルド設定の一覧に頼らない）。ビルド設定の一覧は VR が先頭でチェックあり、画面版と小人の試作はチェックなし
 - 音・素材・模様は `Assets/Bungee/`（両方で使う）
 
@@ -145,7 +145,7 @@ Assets/Scripts/
 - 右 A ボタン: ジャンプ
 - B ボタン（右）・Y ボタン（左）: ミニキャラ ⇔ 等身大
 - グリップ: ドア・窓の開け閉め、ハーネスを付ける（触れるか、レイを当てて）
-- 動いている間は視界の端が暗くなる（酔い対策のビネット）
+- 酔い対策のビネット（動いている間だけ視界の端を暗くする）は、周りが暗くなるのが気になるので外した。戻すときは `VRSceneBuilder.ComfortVignette` を true にして 3. を実行する
 
 ## 画面版での操作
 

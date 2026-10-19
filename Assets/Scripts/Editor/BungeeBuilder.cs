@@ -584,6 +584,7 @@ public static partial class BungeeBuilder
         string path = $"{MaterialFolder}/Bungee_{name}.mat";
         if (!AssetDatabase.IsValidFolder(AssetFolder)) AssetDatabase.CreateFolder("Assets", "Bungee");
         if (!AssetDatabase.IsValidFolder(MaterialFolder)) AssetDatabase.CreateFolder(AssetFolder, "Materials");
+        Validate(fresh);
         var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
         if (mat == null)
         {
@@ -601,6 +602,18 @@ public static partial class BungeeBuilder
         }
         materials[name] = mat;
         return mat;
+    }
+
+    /// <summary>
+    /// URP の素材は、エディターで開くと ShaderGUI.ValidateMaterial が足りない設定（描画の種類のタグ・使わないパス・古い名前の色など）を書き足す。
+    /// 作るときに同じことをしておき、Unity を開くたびに素材のファイルが書き換わって差分が出ないようにする。
+    /// </summary>
+    static void Validate(Material mat)
+    {
+        var editor = Editor.CreateEditor(mat) as MaterialEditor;
+        if (editor == null) return;
+        try { editor.customShaderGUI?.ValidateMaterial(mat); }
+        finally { Object.DestroyImmediate(editor); }
     }
 
     static Material CreateMaterial(string name)

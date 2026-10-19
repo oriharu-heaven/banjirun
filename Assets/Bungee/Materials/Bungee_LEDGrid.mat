@@ -17,7 +17,7 @@ Material:
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
-  m_CustomRenderQueue: 3000
+  m_CustomRenderQueue: 3010
   stringTagMap:
     RenderType: Transparent
   disabledShaderPasses:
@@ -47,7 +47,7 @@ Material:
     - _Cutoff: 0.5
     - _DstBlend: 10
     - _DstBlendAlpha: 10
-    - _QueueOffset: 0
+    - _QueueOffset: 10
     - _ReceiveFog: 0
     - _SampleGI: 0
     - _ScreenSpaceReflectionsContributeTransparent: 1

@@ -662,6 +662,7 @@ public static partial class BungeeBuilder
             mat.SetFloat("_SrcBlendAlpha", (float)BlendMode.One);
             mat.SetFloat("_DstBlendAlpha", add ? (float)BlendMode.One : (float)BlendMode.OneMinusSrcAlpha);
             mat.SetFloat("_ZWrite", 0f);
+            mat.SetFloat("_QueueOffset", queueOffset); // URP は描く順をこの値から決め直すので、renderQueue だけでなくここにも入れる
             mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
             mat.renderQueue = (int)RenderQueue.Transparent + queueOffset;
         }

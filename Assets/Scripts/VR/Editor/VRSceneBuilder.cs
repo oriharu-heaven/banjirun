@@ -13,13 +13,16 @@ using UnityEngine.XR.Interaction.Toolkit.Locomotion.Turning;
 /// <summary>
 /// メニュー「BanjiRun/VR/3. Build VR Scene」で、VR 版のシーン（VR_Prototype）を作る。
 /// 部屋とバンジーは GameSceneBuilder（画面版と共通）。ここで足すのは VR だけの物:
-/// XR Origin（XRI）・つかんで使う仕組み（VRUseOnGrab）・テレポート先・酔い対策のビネット・ヘッドセットが無いときのキーボード操作。
+/// XR Origin（XRI）・つかんで使う仕組み（VRUseOnGrab）・テレポート先・ヘッドセットが無いときのキーボード操作（酔い対策のビネットは今は付けない: ComfortVignette）。
 /// 移動: 左スティック, 向き: 右スティック左右, テレポート: 右スティックを前に倒して離す, ジャンプ: A, 使う: 触れるかレイを当ててグリップ,
 /// ミニキャラ ⇔ 等身大: B・Y（VRPlayerBody が XR Origin ごと縮める。ミニのときは段をよじ登る: ClimbAssist）
 /// </summary>
 public static class VRSceneBuilder
 {
     public const string ScenePath = "Assets/Scenes/VR_Prototype.unity";
+
+    // 酔い対策のビネット（スティックで動く・回る間だけ視界の端を暗くする）。Quest で「周りが暗くなる」のが気になるとのことで外した（2026-10-19）。true にすると戻る
+    const bool ComfortVignette = false;
 
     // テレポートで降りられる床（部屋のモデルとバンジーの台）
     static readonly string[] TeleportFloors =
@@ -92,8 +95,8 @@ public static class VRSceneBuilder
         fallback.leftHand = transforms.FirstOrDefault(t => t.name == "Left Controller");
         fallback.rightHand = transforms.FirstOrDefault(t => t.name == "Right Controller");
 
-        // 酔い対策: スティックで動く・回る間だけ視界の端を暗くする
-        var vignettePrefab = VRProjectSetup.FindSampleAsset<GameObject>("TunnelingVignette");
+        // 酔い対策: スティックで動く・回る間だけ視界の端を暗くする（ComfortVignette が true のときだけ）
+        var vignettePrefab = ComfortVignette ? VRProjectSetup.FindSampleAsset<GameObject>("TunnelingVignette") : null;
         if (vignettePrefab != null)
         {
             var vignette = (GameObject)PrefabUtility.InstantiatePrefab(vignettePrefab, origin.Camera.transform);

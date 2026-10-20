@@ -2,9 +2,9 @@ using UnityEngine;
 
 /// <summary>
 /// ヒンジ位置に置いたピボットに付ける開き戸。子のドアパーツごと鉛直軸で回転する。
-/// プレイヤーから遠ざかる向きに開く。
+/// プレイヤーから遠ざかる向きに開く。VR・画面版では IUsable として使われる（VRUseOnGrab / FirstPersonControls）。
 /// </summary>
-public class Door : MonoBehaviour
+public class Door : MonoBehaviour, IUsable
 {
     public float openAngle = 95f;
     public float swingSpeed = 160f; // deg/sec
@@ -15,6 +15,8 @@ public class Door : MonoBehaviour
     float targetAngle;
 
     public bool IsOpen => !Mathf.Approximately(targetAngle, 0f);
+    public string UseHint => IsOpen ? "閉める" : "開ける";
+    public void Use(Vector3 actor) => Toggle(actor);
 
     void Awake()
     {

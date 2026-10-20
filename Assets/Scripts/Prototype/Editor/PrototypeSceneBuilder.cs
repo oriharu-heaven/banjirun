@@ -30,6 +30,13 @@ public static class PrototypeSceneBuilder
         new DoorSpec { name = "WC_Stall_2_Door", carryParent = "WC_Stall_2_DoorHinge", leaf = "WC_Stall_2_DoorLeaf", handle = "WC_Stall_2_DoorPullIn" },
         new DoorSpec { name = "Door_Hall_South", carry = new[] { "Door_Hall_South_Leaf", "Door_Hall_South_Handle" }, leaf = "Door_Hall_South_Leaf", handle = "Door_Hall_South_Handle" },
         new DoorSpec { name = "Lobby_StairDoor", carry = new[] { "Lobby_StairDoor_Leaf", "Lobby_StairDoor_Handle", "Lobby_StairDoor_Sign" }, leaf = "Lobby_StairDoor_Leaf", handle = "Lobby_StairDoor_Handle" },
+        // ホール東の窓（南から 2 枚目）。開けるとバルコニーへ出られる（VR 版はその先にバンジージャンプ）
+        new DoorSpec
+        {
+            name = "EastWin_Sash_02",
+            carry = new[] { "EastWin_Sash_02_FrameB", "EastWin_Sash_02_FrameL", "EastWin_Sash_02_FrameR", "EastWin_Sash_02_FrameT", "EastWin_Sash_02_Glass", "EastWin_Sash_02_Handle", "EastWin_Sash_02_HandleBase" },
+            leaf = "EastWin_Sash_02_Glass", handle = "EastWin_Sash_02_Handle",
+        },
     };
 
     [MenuItem("BanjiRun/Build Prototype Scene")]
@@ -41,16 +48,43 @@ public static class PrototypeSceneBuilder
 
     public static void Build()
     {
-        var modelAsset = AssetDatabase.LoadAssetAtPath<GameObject>(ModelPath);
-        if (modelAsset == null)
-        {
-            Debug.LogError($"[Prototype] モデルが読み込めません: {ModelPath}（Blender がインストールされているか確認）");
-            return;
-        }
+        var modelAsset = LoadRoomModel();
+        if (modelAsset == null) return;
 
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        CreateRoom(modelAsset, out Vector3 spawn);
 
-        // 部屋
+        // プレイヤー
+        var player = CreatePlayer(spawn);
+
+        // カメラ
+        var camGo = new GameObject("Main Camera") { tag = "MainCamera" };
+        var camera = camGo.AddComponent<Camera>();
+        camera.nearClipPlane = 0.01f;
+        camera.farClipPlane = 100f;
+        camGo.AddComponent<AudioListener>();
+        var follow = camGo.AddComponent<ThirdPersonCamera>();
+        follow.target = player.transform;
+        camGo.transform.position = spawn + new Vector3(0f, 0.4f, -0.9f);
+        player.GetComponent<TinyPlayerController>().cameraTransform = camGo.transform;
+
+        EditorSceneManager.SaveScene(scene, ScenePath);
+        Selection.activeGameObject = player;
+        Debug.Log($"[Prototype] シーン生成完了: {ScenePath} / spawn {spawn}");
+    }
+
+    public static GameObject LoadRoomModel()
+    {
+        var modelAsset = AssetDatabase.LoadAssetAtPath<GameObject>(ModelPath);
+        if (modelAsset == null) Debug.LogError($"[Prototype] モデルが読み込めません: {ModelPath}（Blender がインストールされているか確認）");
+        return modelAsset;
+    }
+
+    /// <summary>
+    /// 開いているシーンに部屋を置き、ドア・コライダー・ライト調整を付ける。VR シーン（VRSceneBuilder）からも使う。
+    /// </summary>
+    public static GameObject CreateRoom(GameObject modelAsset, out Vector3 spawn)
+    {
         var room = (GameObject)PrefabUtility.InstantiatePrefab(modelAsset);
         PrefabUtility.UnpackPrefabInstance(room, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
         room.name = "AkibaSchoolRoom";
@@ -74,24 +108,9 @@ public static class PrototypeSceneBuilder
         // Apply は初回のみ元の強さを記録するので、AddComponent 時の OnEnable と重複しても二重に暗くならない
         room.AddComponent<RoomLightDimmer>().Apply();
 
-        // プレイヤー
-        Vector3 spawn = FindSpawnPoint(byName);
-        var player = CreatePlayer(spawn);
-
-        // カメラ
-        var camGo = new GameObject("Main Camera") { tag = "MainCamera" };
-        var camera = camGo.AddComponent<Camera>();
-        camera.nearClipPlane = 0.01f;
-        camera.farClipPlane = 100f;
-        camGo.AddComponent<AudioListener>();
-        var follow = camGo.AddComponent<ThirdPersonCamera>();
-        follow.target = player.transform;
-        camGo.transform.position = spawn + new Vector3(0f, 0.4f, -0.9f);
-        player.GetComponent<TinyPlayerController>().cameraTransform = camGo.transform;
-
-        EditorSceneManager.SaveScene(scene, ScenePath);
-        Selection.activeGameObject = player;
-        Debug.Log($"[Prototype] シーン生成完了: {ScenePath} / ライト {room.GetComponentsInChildren<Light>(true).Length} 個, MeshCollider {colliders} 個, ドア {Doors.Length} 枚, spawn {spawn}");
+        spawn = FindSpawnPoint(byName);
+        Debug.Log($"[Prototype] 部屋を配置: ライト {room.GetComponentsInChildren<Light>(true).Length} 個, MeshCollider {colliders} 個, ドア {Doors.Length} 枚");
+        return room;
     }
 
     static void SetupDoor(DoorSpec spec, Dictionary<string, Transform> byName, HashSet<Transform> doorParts)

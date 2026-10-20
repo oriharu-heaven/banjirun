@@ -6,7 +6,15 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/SampleScene.unity
-    guid: 99c9720ab356a0642a771bea13969a05
+    path: Assets/Scenes/VR_Prototype.unity
+    guid: 5b171c21bb61e43b6a88ce29e5a95996
+  - enabled: 0
+    path: Assets/Scenes/Flat_Prototype.unity
+    guid: 0168b724bbad84b6ab1d2d325b34685a
+  - enabled: 0
+    path: Assets/Scenes/Prototype.unity
+    guid: 5e8a18c68606b40d897608fcd0772c63
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+    com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 276f603a4bfae450287ca56f4c011524, type: 2}
+    com.unity.xr.openxr.settings4: {fileID: 11400000, guid: 2f261f75efa4c41df9c6988c3bd7775b, type: 2}

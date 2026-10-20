@@ -1,0 +1,16 @@
+バンジージャンプの音
+
+OtoLogic（https://otologic.jp, CC BY 4.0）
+  Bungee_WindAmbient.mp3   Wind-Synthetic01-3
+  Bungee_JumpWhoosh.mp3    Motion-Blow_Away02-1(Long)
+  Bungee_Cheer.mp3         Cheer-Crowd01-4(High-Long)
+  Mini_Shrink.mp3          Anime_Motion02-2(Double)（ミニキャラになる）
+  Mini_Grow.mp3            Anime_Motion02-3(Double)（等身大に戻る）
+
+ElevenLabs（Sound Effects / Text to Speech, Creator プランで作成：商用利用可。2026-10-18）
+  Bungee_heartbeat.mp3, Bungee_fall_wind.mp3, Bungee_cord_stretch.mp3, Bungee_plank_creak.mp3,
+  Bungee_carabiner.mp3, Bungee_cushion_land.mp3
+  Bungee_Voice_*.mp3（声: Liam, eleven_multilingual_v2）
+  Bungee_plank_break.mp3（板が折れる）, Bungee_mode_lever.mp3（モードのレバー）（2026-10-20）
+  Bungee_plank_crack_warn.mp3（折れる前のミシッ）, Bungee_bolt_snap.mp3（ボルトが外れる）, Bungee_surprise_hit.mp3（折れた瞬間の衝撃音）,
+  Bungee_Voice_oh_no.mp3（係の人「Whoa! Oh no, no, no!」声: Liam, eleven_multilingual_v2）（2026-10-20）

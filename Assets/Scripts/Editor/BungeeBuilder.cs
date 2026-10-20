@@ -289,6 +289,12 @@ public static partial class BungeeBuilder
         bungee.voiceCount = new[] { "count_3", "count_2", "count_1", "count_bungee" }.Select(n => LoadClip("Bungee_Voice_" + n)).ToArray();
         bungee.plankBreak = LoadClip("Bungee_plank_break");
         bungee.modeLever = LoadClip("Bungee_mode_lever");
+        bungee.plankCrackWarn = LoadClip("Bungee_plank_crack_warn");
+        bungee.boltSnap = LoadClip("Bungee_bolt_snap");
+        bungee.surpriseHit = LoadClip("Bungee_surprise_hit");
+        bungee.voiceOhNo = LoadClip("Bungee_Voice_oh_no");
+        bungee.splinterMaterial = GetMaterial("Splinter");
+        bungee.splinterMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
         bungee.windStreakMaterial = GetMaterial("WindStreak");
         bungee.wornHarnessModel = AssetDatabase.LoadAssetAtPath<GameObject>(HarnessModelPath);
         harness.bungee = bungee;
@@ -723,6 +729,13 @@ public static partial class BungeeBuilder
                 streak.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
                 streak.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
                 return streak;
+            }
+            case "Splinter":
+            {
+                // 折れた板の木くず（パーティクルの細長い箱。色は 1 つずつ BungeeJump が変える）
+                var chip = new Material(Shader.Find("Universal Render Pipeline/Particles/Simple Lit"));
+                chip.SetColor("_BaseColor", Color.white);
+                return chip;
             }
             case "Cord":
             {

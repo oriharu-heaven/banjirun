@@ -14,7 +14,7 @@ using UnityEngine.XR.Interaction.Toolkit.Locomotion.Turning;
 /// メニュー「BanjiRun/VR/3. Build VR Scene」で、VR 版のシーン（VR_Prototype）を作る。
 /// 部屋とバンジーは GameSceneBuilder（画面版と共通）。ここで足すのは VR だけの物:
 /// XR Origin（XRI）・つかんで使う仕組み（VRUseOnGrab）・テレポート先・ヘッドセットが無いときのキーボード操作（酔い対策のビネットは今は付けない: ComfortVignette）。
-/// 移動: 左スティック, 向き: 右スティック左右（倒している間、倒した分だけの速さでずっと回る）, テレポート: 右スティックを前に倒して離す, ジャンプ: A, 使う: 触れるかレイを当ててグリップ,
+/// 移動: 左スティック, 向き: 右スティック左右（倒している間、倒した分だけの速さでずっと回る。後ろに倒して真後ろを向くのは無し）, テレポート: 右スティックを前に倒して離す, ジャンプ: A, 使う: 触れるかレイを当ててグリップ,
 /// ミニキャラ ⇔ 等身大: B・Y（VRPlayerBody が XR Origin ごと縮める。ミニのときは段をよじ登る: ClimbAssist）
 /// </summary>
 public static class VRSceneBuilder
@@ -94,6 +94,7 @@ public static class VRSceneBuilder
         rig.AddComponent<VRPlayerBody>();
         rig.AddComponent<ClimbAssist>();
         rig.AddComponent<FirstPersonControls>().enabled = false;
+        rig.AddComponent<VRBungeeHaptics>(); // 板が折れる・ロープが張る・着地でコントローラーを震わせる
         var fallback = rig.AddComponent<VRNoHeadsetFallback>();
         var transforms = rig.GetComponentsInChildren<Transform>(true);
         fallback.leftHand = transforms.FirstOrDefault(t => t.name == "Left Controller");
@@ -107,10 +108,17 @@ public static class VRSceneBuilder
             so.FindProperty("m_SmoothTurnEnabled").boolValue = true;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
+        // スティックを後ろに倒すと真後ろを向く（XRI の既定）のは、いらないとのことで止めた（2026-10-20）
         foreach (var turn in rig.GetComponentsInChildren<ContinuousTurnProvider>(true))
         {
             turn.turnSpeed = TurnSpeed;
+            turn.enableTurnAround = false;
             PrefabUtility.RecordPrefabInstancePropertyModifications(turn);
+        }
+        foreach (var snap in rig.GetComponentsInChildren<SnapTurnProvider>(true))
+        {
+            snap.enableTurnAround = false;
+            PrefabUtility.RecordPrefabInstancePropertyModifications(snap);
         }
 
         // 酔い対策: スティックで動く・回る間だけ視界の端を暗くする（ComfortVignette が true のときだけ）

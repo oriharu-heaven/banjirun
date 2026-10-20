@@ -12,3 +12,5 @@ ElevenLabs（Sound Effects / Text to Speech, Creator プランで作成：商用
   Bungee_carabiner.mp3, Bungee_cushion_land.mp3
   Bungee_Voice_*.mp3（声: Liam, eleven_multilingual_v2）
   Bungee_plank_break.mp3（板が折れる）, Bungee_mode_lever.mp3（モードのレバー）（2026-10-20）
+  Bungee_plank_crack_warn.mp3（折れる前のミシッ）, Bungee_bolt_snap.mp3（ボルトが外れる）, Bungee_surprise_hit.mp3（折れた瞬間の衝撃音）,
+  Bungee_Voice_oh_no.mp3（係の人「Whoa! Oh no, no, no!」声: Liam, eleven_multilingual_v2）（2026-10-20）

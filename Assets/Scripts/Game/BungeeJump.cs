@@ -10,6 +10,9 @@ using UnityEngine;
 /// VR でも画面版でも同じ。プレイヤーは PlayerBody を通してだけ動かす。
 /// ミニキャラ（PlayerBody.Scale）のときは、腰の高さ・体に付けたハーネスを縮め、ロープは地面すれすれに届く長さ・強さに変える。
 /// ドッキリモード（台のレバー BungeeModeSwitch で切り替え）: 板の先でカウントダウンを待っていると、途中で板が付け根から折れて、乗っている人ごと落ちる。
+/// 「やばい、板が外れた」の怖さ: 折れる 0.5 秒前に予兆（ミシッと鳴って板がガクッと下がり、震え続け、木くずがこぼれ、心臓が一気に速くなる）→
+/// 折れる（バキッ・ボルトが弾ける金属音・低い衝撃音・木くずが飛び散る・係の人が「Oh no!」と叫ぶ・掲示板に「!?」）。
+/// 画面版は画面が揺れ、VR はコントローラーが震える（PlankCracked。視界は動かさない）。
 /// 折れた板は下に落ちて転がったままになり、光る輪で台へ戻ると新しい板に戻る。
 /// </summary>
 public class BungeeJump : MonoBehaviour
@@ -63,7 +66,11 @@ public class BungeeJump : MonoBehaviour
     public bool surpriseMode;  // 始めのモード。遊ぶ間は BungeeModeSwitch のレバーで切り替える
     [Tooltip("カウントダウンが始まってから板が折れるまで（秒）。「3」が 0 秒、「2」が 1 秒、「1」が 2 秒、「バンジー！」が 3 秒")]
     public Vector2 breakWindow = new Vector2(0.6f, 2.6f);
-    public AudioClip plankBreak, modeLever;
+    [Tooltip("予兆（ミシッと鳴って板がガクッと下がる）から、本当に折れるまで（秒）")]
+    public float warnTime = 0.5f;
+    public AudioClip plankBreak, modeLever, plankCrackWarn, boltSnap, surpriseHit, voiceOhNo;
+    public Material splinterMaterial; // 木くず（パーティクル）
+    public Mesh splinterMesh;
 
     [Header("風の筋（落ちる速さが分かるように）")]
     public Material windStreakMaterial;
@@ -87,6 +94,8 @@ public class BungeeJump : MonoBehaviour
     public event System.Action<Phase> PhaseChanged;
     public bool SurpriseMode => surpriseMode;
     public event System.Action<bool> SurpriseModeChanged;
+    /// <summary>ドッキリの板がきしんだ・折れた瞬間（強さ 0〜1。予兆 0.4、折れる 1）。画面版の揺れ・VR のコントローラーの震えに使う。</summary>
+    public event System.Action<float> PlankCracked;
     /// <summary>ドッキリで板が折れて、下に落ちている（光る輪で台へ戻るまで）</summary>
     public bool PlankBroken { get; private set; }
     /// <summary>ロープがピンと張った瞬間（強さ 0〜1）。画面版のカメラの揺れなどに使う。</summary>
@@ -122,6 +131,10 @@ public class BungeeJump : MonoBehaviour
     bool plankDetached, plankDown;
     float settle;
     Quaternion settleFrom, settleTo;
+    bool warned;       // このカウントダウンで予兆が出た
+    bool plankCracked; // 予兆のあと（板が下がって震えている。新しい板に戻るまで）
+    float crackShake;
+    ParticleSystem splinters;
     AudioSource heartSource, windSource, sfx;
     ParticleSystem streaks;
     Transform wornHarness;
@@ -138,6 +151,7 @@ public class BungeeJump : MonoBehaviour
             plankRestPosition = plank.position;
             plankColliders = plank.GetComponentsInChildren<Collider>(true);
         }
+        SetupSplinters();
         if (body != null)
         {
             SetupPlayerEffects(body.Camera.transform);
@@ -206,8 +220,13 @@ public class BungeeJump : MonoBehaviour
         bool atEdge = outside && toEdge < 0.6f && feet.y > platformTop - 0.25f;
         if (atEdge)
         {
-            if (countdown < 0f) breakAt = Random.Range(breakWindow.x, breakWindow.y);
+            if (countdown < 0f)
+            {
+                breakAt = Random.Range(breakWindow.x, breakWindow.y);
+                warned = false;
+            }
             countdown = Mathf.Max(countdown, 0f) + dt;
+            if (surpriseMode && !warned && countdown >= breakAt - warnTime) WarnPlank();
             if (surpriseMode && countdown >= breakAt)
             {
                 BreakPlank();
@@ -234,6 +253,17 @@ public class BungeeJump : MonoBehaviour
     /// <summary>体の大きさに合わせた腰の高さ</summary>
     float Waist => waistHeight * body.Scale;
 
+    /// <summary>ドッキリの予兆: ミシッと鳴って板がガクッと下がり、そのまま震え続ける。付け根から木くずがこぼれ、心臓が一気に速くなる。</summary>
+    void WarnPlank()
+    {
+        warned = true;
+        plankCracked = true;
+        crackShake = 1f;
+        PlayAt(plankCrackWarn, plank.position, 1f);
+        EmitSplinters(8, 0.5f);
+        PlankCracked?.Invoke(0.4f);
+    }
+
     /// <summary>ドッキリ: 板が付け根から折れて、乗っている人ごと落ちる（押し出さず、その場から真下へ）。</summary>
     void BreakPlank()
     {
@@ -244,8 +274,13 @@ public class BungeeJump : MonoBehaviour
         plankDetached = false;
         plankDown = false;
         if (plankColliders != null) foreach (var c in plankColliders) if (c != null) c.enabled = false;
-        if (staffVoice != null) staffVoice.Stop(); // 係の人のカウントは途中で切れる
-        PlayAt(plankBreak, jumpEdge.position, 1f);
+        if (staffVoice != null) staffVoice.Stop(); // 係の人のカウントは途中で切れて、叫び声に変わる
+        PlayAt(plankBreak, plank.position, 1f);
+        PlayAt(boltSnap, plank.position, 0.9f);
+        Play(surpriseHit, 0.8f);
+        StartCoroutine(PlayLater(voiceOhNo, 0.2f, 1f, true));
+        EmitSplinters(30, 1.8f);
+        PlankCracked?.Invoke(1f);
         StartFall();
         SetText(countdownSign, "!?");
     }
@@ -372,7 +407,15 @@ public class BungeeJump : MonoBehaviour
         }
 
         float target = plankDip * p + Mathf.Sin(Time.time * 6.5f) * 0.6f * p;
-        plankAngle = Mathf.Lerp(plankAngle, target, 1f - Mathf.Exp(-8f * dt));
+        float sharpness = 8f;
+        if (plankCracked)
+        {
+            // 予兆のあと: ガクッと 6° 下がり、細かく震え続ける（最初が一番強い）
+            crackShake = Mathf.MoveTowards(crackShake, 0.35f, dt * 1.5f);
+            target += 6f + Mathf.Sin(Time.time * 55f) * 1.4f * crackShake;
+            sharpness = 30f;
+        }
+        plankAngle = Mathf.Lerp(plankAngle, target, 1f - Mathf.Exp(-sharpness * dt));
         plank.rotation = plankRest * Quaternion.Euler(plankAngle, 0f, 0f);
     }
 
@@ -430,6 +473,7 @@ public class BungeeJump : MonoBehaviour
     /// <summary>新しい板に戻す（台へ戻ったとき）</summary>
     void RestorePlank()
     {
+        plankCracked = false;
         if (!PlankBroken || plank == null) return;
         PlankBroken = false;
         plankAngle = 0f;
@@ -495,6 +539,71 @@ public class BungeeJump : MonoBehaviour
 
     /// <summary>体の大きさに合わせたロープの長さ（等身大とミニの間は補間）</summary>
     float CordLengthFor(float scale) => Mathf.Lerp(miniCordLength, cordLength, Mathf.InverseLerp(PlayerBody.MiniScale, 1f, scale));
+
+    // ---- 木くず（ドッキリで板が折れるとき） ----
+
+    /// <summary>
+    /// 木くずのパーティクル（細長い木の切れ端。世界に残して落とし、地面＝クッションの底の高さの面で止める）。
+    /// 予兆で少しこぼれ、折れた瞬間に飛び散って、落ちていく自分のまわりを一緒に落ちる。
+    /// </summary>
+    void SetupSplinters()
+    {
+        if (splinterMaterial == null || splinterMesh == null || plank == null) return;
+        var go = new GameObject("PlankSplinters");
+        go.transform.SetParent(transform, false);
+        splinters = go.AddComponent<ParticleSystem>();
+        splinters.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        var main = splinters.main;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.gravityModifier = 1f;
+        main.startSize3D = true;
+        main.startRotation3D = true;
+        main.maxParticles = 120;
+        main.playOnAwake = false;
+        var emission = splinters.emission;
+        emission.rateOverTime = 0f;
+        var shape = splinters.shape;
+        shape.enabled = false;
+        if (cushion != null)
+        {
+            var ground = new GameObject("SplinterGround").transform;
+            ground.SetParent(go.transform, false);
+            ground.position = cushion.position; // クッションは底が原点＝地面の高さ
+            var collision = splinters.collision;
+            collision.enabled = true;
+            collision.type = ParticleSystemCollisionType.Planes;
+            collision.SetPlane(0, ground);
+            collision.dampen = 0.75f;
+            collision.bounce = 0.15f;
+            collision.lifetimeLoss = 0f;
+        }
+        var renderer = splinters.GetComponent<ParticleSystemRenderer>();
+        renderer.renderMode = ParticleSystemRenderMode.Mesh;
+        renderer.alignment = ParticleSystemRenderSpace.World; // 1 つずつ決めた向きのまま（カメラの方へ向けない）
+        renderer.mesh = splinterMesh;
+        renderer.sharedMaterial = splinterMaterial;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        splinters.Play();
+    }
+
+    void EmitSplinters(int count, float speed)
+    {
+        if (splinters == null) return;
+        var light = new Color(0.78f, 0.6f, 0.4f);
+        var dark = new Color(0.42f, 0.28f, 0.16f);
+        var p = new ParticleSystem.EmitParams();
+        for (int i = 0; i < count; i++)
+        {
+            // 付け根（板の幅いっぱい）から、下と外へ飛び散る
+            p.position = plank.position + plank.rotation * new Vector3(Random.Range(-plankHalfWidth, plankHalfWidth), -0.03f, Random.Range(0f, 0.12f));
+            p.velocity = (Random.insideUnitSphere + Vector3.down * 0.4f + jumpEdge.forward * 0.3f) * speed;
+            p.startSize3D = new Vector3(Random.Range(0.008f, 0.02f), Random.Range(0.005f, 0.012f), Random.Range(0.03f, 0.13f));
+            p.rotation3D = new Vector3(Random.Range(0f, 360f), Random.Range(0f, 360f), Random.Range(0f, 360f));
+            p.startLifetime = 25f; // 下に散らばったまま、降ろされて着地するまで残す
+            p.startColor = Color.Lerp(dark, light, Random.value);
+            splinters.Emit(p, 1);
+        }
+    }
 
     // ---- 音と風の筋 ----
 
@@ -565,11 +674,13 @@ public class BungeeJump : MonoBehaviour
         }
         if (heartSource != null)
         {
-            // ハーネスを付けると鳴り始め、板の先・カウントダウンで速く大きくなる。飛んだら止まる
+            // ハーネスを付けると鳴り始め、板の先・カウントダウンで速く大きくなる。飛んだら止まる。
+            // ドッキリの予兆が出たら、一気に最大の速さ・大きさに（折れて落ち始めてからも 2 秒は鳴り続ける）
             float tension = Mathf.Max(PlankProgress, countdown >= 0f ? 1f : 0f);
-            float target = CurrentPhase == Phase.Harnessed ? 0.35f + 0.6f * tension : 0f;
-            heartSource.volume = Mathf.MoveTowards(heartSource.volume, target, dt * (target > heartSource.volume ? 0.8f : 3f));
-            heartSource.pitch = 0.95f + 0.4f * tension;
+            bool panic = plankCracked && (CurrentPhase == Phase.Harnessed || (CurrentPhase == Phase.Falling && PhaseTime < 2f));
+            float target = panic ? 1f : CurrentPhase == Phase.Harnessed ? 0.35f + 0.6f * tension : 0f;
+            heartSource.volume = Mathf.MoveTowards(heartSource.volume, target, dt * (panic ? 6f : target > heartSource.volume ? 0.8f : 3f));
+            heartSource.pitch = panic ? 1.6f : 0.95f + 0.4f * tension;
         }
         if (streaks != null)
         {

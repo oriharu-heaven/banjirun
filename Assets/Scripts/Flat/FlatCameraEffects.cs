@@ -4,6 +4,7 @@ using UnityEngine;
 /// 画面で遊ぶときだけの、落ちる迫力の演出。VR では視界を勝手に動かすと酔うので使わない。
 /// ・速く落ちるほど視野（FOV）を広げる
 /// ・ロープがピンと張った瞬間と、クッションに着地したときに画面を揺らす
+/// ・ドッキリモードで板がきしんだ・折れた瞬間に画面を揺らす
 /// </summary>
 [RequireComponent(typeof(PlayerBody))]
 [DefaultExecutionOrder(20)] // FirstPersonControls が頭の向きを決めた後に揺らす
@@ -27,6 +28,7 @@ public class FlatCameraEffects : MonoBehaviour
         bungee = FindFirstObjectByType<BungeeJump>();
         if (bungee == null) return;
         bungee.CordSnapped += strength => Shake(0.6f + strength);
+        bungee.PlankCracked += strength => Shake(0.5f + strength * 0.8f);
         bungee.PhaseChanged += phase =>
         {
             if (phase == BungeeJump.Phase.Landed) Shake(0.7f);

@@ -173,8 +173,9 @@ public class BungeeDemoDirector : MonoBehaviour
 
         Caption(mini ? "⑤ 細い板の先へ。下まで 23m（ミニの目には 150m）" : "⑤ 細い板の先へ。下まで 23m");
         Vector3 edge = bungee.jumpEdge.position - outward * 0.25f;
+        // ドッキリでは板の先に着くとすぐカウントダウンが始まり、早いと 0.6 秒で折れるので、下を見ずに数字の方を向く
         yield return WalkTo(Flat(edge) + deck);
-        yield return LookAt(bungee.cushion.position, 1.8f);
+        if (!surprise) yield return LookAt(bungee.cushion.position, 1.8f);
 
         Caption("⑥ 3・2・1…");
         yield return LookAt(bungee.countdownSign.transform.position, 0.8f);
@@ -280,7 +281,7 @@ public class BungeeDemoDirector : MonoBehaviour
         float t = 0f;
         for (; t < timeout; t += Time.deltaTime)
         {
-            if (Flat(target - body.Feet).magnitude < 0.12f) break;
+            if (Flat(target - body.Feet).magnitude < 0.12f || body.Locked) break; // バンジーで外から動かされ始めたら（ドッキリで板が折れたら）歩くのをやめる
             yield return WalkStep(target);
         }
         if (t >= timeout)

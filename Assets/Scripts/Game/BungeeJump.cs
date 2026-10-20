@@ -9,6 +9,8 @@ using UnityEngine;
 /// ロープが張るときの音、地面すれすれまで落ちる長いロープ。
 /// VR でも画面版でも同じ。プレイヤーは PlayerBody を通してだけ動かす。
 /// ミニキャラ（PlayerBody.Scale）のときは、腰の高さ・体に付けたハーネスを縮め、ロープは地面すれすれに届く長さ・強さに変える。
+/// ドッキリモード（台のレバー BungeeModeSwitch で切り替え）: 板の先でカウントダウンを待っていると、途中で板が付け根から折れて、乗っている人ごと落ちる。
+/// 折れた板は下に落ちて転がったままになり、光る輪で台へ戻ると新しい板に戻る。
 /// </summary>
 public class BungeeJump : MonoBehaviour
 {
@@ -57,6 +59,12 @@ public class BungeeJump : MonoBehaviour
     public AudioClip[] voiceCount;  // 3, 2, 1, バンジー！
     public AudioClip shrinkSound, growSound; // ミニキャラになる・等身大に戻る（音を 1 か所で鳴らして録画にも残すため、ここで鳴らす）
 
+    [Header("ドッキリモード（カウントダウンの途中で板が折れて、一緒に落ちる）")]
+    public bool surpriseMode;  // 始めのモード。遊ぶ間は BungeeModeSwitch のレバーで切り替える
+    [Tooltip("カウントダウンが始まってから板が折れるまで（秒）。「3」が 0 秒、「2」が 1 秒、「1」が 2 秒、「バンジー！」が 3 秒")]
+    public Vector2 breakWindow = new Vector2(0.6f, 2.6f);
+    public AudioClip plankBreak, modeLever;
+
     [Header("風の筋（落ちる速さが分かるように）")]
     public Material windStreakMaterial;
 
@@ -77,6 +85,10 @@ public class BungeeJump : MonoBehaviour
     public float PhaseTime { get; private set; }
     public float PlankProgress { get; private set; }  // 板のどこまで来たか（0〜1）
     public event System.Action<Phase> PhaseChanged;
+    public bool SurpriseMode => surpriseMode;
+    public event System.Action<bool> SurpriseModeChanged;
+    /// <summary>ドッキリで板が折れて、下に落ちている（光る輪で台へ戻るまで）</summary>
+    public bool PlankBroken { get; private set; }
     /// <summary>ロープがピンと張った瞬間（強さ 0〜1）。画面版のカメラの揺れなどに使う。</summary>
     public event System.Action<float> CordSnapped;
     /// <summary>鳴らした音（音・音量・3D の位置。2D は null）。録画で音を後から重ねるのに使う。</summary>
@@ -99,6 +111,17 @@ public class BungeeJump : MonoBehaviour
     float plankAngle;
     float creakTimer;
     bool onPlank;
+    // ドッキリで折れた板（付け根で少し折れ曲がってから外れ、回りながら落ちて、下で止まる）
+    const float HingeTime = 0.15f;
+    float breakAt = -1f;
+    Vector3 plankRestPosition;
+    Collider[] plankColliders;
+    float brokenTime, hingeSpeed;
+    Vector3 plankCenter, plankVelocity, plankSpin;
+    Quaternion plankFall;
+    bool plankDetached, plankDown;
+    float settle;
+    Quaternion settleFrom, settleTo;
     AudioSource heartSource, windSource, sfx;
     ParticleSystem streaks;
     Transform wornHarness;
@@ -109,7 +132,12 @@ public class BungeeJump : MonoBehaviour
         if (cushion != null) cushionScale = cushion.localScale;
         if (cord != null) cord.positionCount = CordPoints;
         if (countdownSign != null) countdownScale = countdownSign.transform.localScale;
-        if (plank != null) plankRest = plank.rotation;
+        if (plank != null)
+        {
+            plankRest = plank.rotation;
+            plankRestPosition = plank.position;
+            plankColliders = plank.GetComponentsInChildren<Collider>(true);
+        }
         if (body != null)
         {
             SetupPlayerEffects(body.Camera.transform);
@@ -145,6 +173,15 @@ public class BungeeJump : MonoBehaviour
         AnimateCushion(dt);
     }
 
+    /// <summary>ふつう ⇔ ドッキリを切り替える（BungeeModeSwitch のレバーから呼ばれる）。次のカウントダウンから効く。</summary>
+    public void SetSurpriseMode(bool on, Vector3 leverPosition)
+    {
+        if (surpriseMode == on) return;
+        surpriseMode = on;
+        PlayAt(modeLever, leverPosition, 0.9f);
+        SurpriseModeChanged?.Invoke(on);
+    }
+
     /// <summary>ハーネスを付ける（BungeeHarness から呼ばれる）。</summary>
     public void AttachHarness()
     {
@@ -169,7 +206,13 @@ public class BungeeJump : MonoBehaviour
         bool atEdge = outside && toEdge < 0.6f && feet.y > platformTop - 0.25f;
         if (atEdge)
         {
+            if (countdown < 0f) breakAt = Random.Range(breakWindow.x, breakWindow.y);
             countdown = Mathf.Max(countdown, 0f) + dt;
+            if (surpriseMode && countdown >= breakAt)
+            {
+                BreakPlank();
+                return;
+            }
             int n = Mathf.Max(0, 3 - Mathf.FloorToInt(countdown / CountdownStep));
             if (n != shownCount)
             {
@@ -190,6 +233,22 @@ public class BungeeJump : MonoBehaviour
 
     /// <summary>体の大きさに合わせた腰の高さ</summary>
     float Waist => waistHeight * body.Scale;
+
+    /// <summary>ドッキリ: 板が付け根から折れて、乗っている人ごと落ちる（押し出さず、その場から真下へ）。</summary>
+    void BreakPlank()
+    {
+        PlankBroken = true;
+        PlankProgress = 0f;
+        brokenTime = 0f;
+        hingeSpeed = 0f;
+        plankDetached = false;
+        plankDown = false;
+        if (plankColliders != null) foreach (var c in plankColliders) if (c != null) c.enabled = false;
+        if (staffVoice != null) staffVoice.Stop(); // 係の人のカウントは途中で切れる
+        PlayAt(plankBreak, jumpEdge.position, 1f);
+        StartFall();
+        SetText(countdownSign, "!?");
+    }
 
     void StartFall()
     {
@@ -285,6 +344,11 @@ public class BungeeJump : MonoBehaviour
     void UpdatePlank(float dt)
     {
         if (plank == null) return;
+        if (PlankBroken)
+        {
+            UpdateBrokenPlank(dt);
+            return;
+        }
         float p = 0f;
         if (CurrentPhase == Phase.Idle || CurrentPhase == Phase.Harnessed)
         {
@@ -310,6 +374,67 @@ public class BungeeJump : MonoBehaviour
         float target = plankDip * p + Mathf.Sin(Time.time * 6.5f) * 0.6f * p;
         plankAngle = Mathf.Lerp(plankAngle, target, 1f - Mathf.Exp(-8f * dt));
         plank.rotation = plankRest * Quaternion.Euler(plankAngle, 0f, 0f);
+    }
+
+    /// <summary>折れた板: 付け根で先が下へ折れ曲がり、外れて回りながら外へ落ち、クッションか地面で止まる。</summary>
+    void UpdateBrokenPlank(float dt)
+    {
+        brokenTime += dt;
+        if (brokenTime < HingeTime)
+        {
+            hingeSpeed += 1400f * dt;
+            plankAngle += hingeSpeed * dt;
+            plank.rotation = plankRest * Quaternion.Euler(plankAngle, 0f, 0f);
+            return;
+        }
+        float half = plankLength / 2f;
+        if (!plankDetached)
+        {
+            plankDetached = true;
+            // 外れた瞬間: 板の真ん中の速さ（折れ曲がる回転）に、外へ投げ出される分を足す。クッションの外の地面に落ちるくらい
+            plankFall = plank.rotation;
+            plankCenter = plank.position + plankFall * Vector3.forward * half;
+            plankVelocity = Vector3.down * (hingeSpeed * Mathf.Deg2Rad * half) + jumpEdge.forward * 1.7f + Vector3.Cross(Vector3.up, jumpEdge.forward) * Random.Range(-0.4f, 0.4f);
+            plankSpin = new Vector3(hingeSpeed * 0.5f, Random.Range(-40f, 40f), Random.Range(-60f, 60f));
+        }
+        if (plankDown)
+        {
+            // 止まったら、少しだけ揺れてから寝かせる
+            settle = Mathf.Min(1f, settle + dt / 0.25f);
+            plankFall = Quaternion.Slerp(settleFrom, settleTo, Mathf.SmoothStep(0f, 1f, settle));
+        }
+        else
+        {
+            Vector3 step = plankVelocity * dt;
+            if (Physics.Raycast(plankCenter, Vector3.down, out var hit, Mathf.Max(-step.y, 0f) + 0.08f, ~0, QueryTriggerInteraction.Ignore) || brokenTime > 8f)
+            {
+                plankDown = true;
+                settle = 0f;
+                if (hit.collider != null) plankCenter.y = hit.point.y + 0.06f;
+                Vector3 flat = Vector3.ProjectOnPlane(plankFall * Vector3.forward, Vector3.up);
+                settleFrom = plankFall;
+                settleTo = Quaternion.LookRotation(flat.sqrMagnitude > 0.01f ? flat : jumpEdge.forward) * Quaternion.Euler(0f, 0f, Random.Range(-6f, 6f));
+                PlayAt(cushionLand, plankCenter, 0.7f);
+                Debug.Log($"[バンジー] 折れた板が止まった: {plankCenter:F2}（{(hit.collider != null ? hit.collider.name : "下に何もない")}、{brokenTime:F1} 秒）");
+            }
+            else
+            {
+                plankVelocity += Physics.gravity * dt;
+                plankCenter += step;
+                plankFall *= Quaternion.Euler(plankSpin * dt);
+            }
+        }
+        plank.SetPositionAndRotation(plankCenter - plankFall * Vector3.forward * half, plankFall);
+    }
+
+    /// <summary>新しい板に戻す（台へ戻ったとき）</summary>
+    void RestorePlank()
+    {
+        if (!PlankBroken || plank == null) return;
+        PlankBroken = false;
+        plankAngle = 0f;
+        plank.SetPositionAndRotation(plankRestPosition, plankRest);
+        if (plankColliders != null) foreach (var c in plankColliders) if (c != null) c.enabled = true;
     }
 
     /// <summary>付けている間は、体（足の真上）について行き、顔の向きに合わせて回す。</summary>
@@ -509,6 +634,7 @@ public class BungeeJump : MonoBehaviour
         switch (phase)
         {
             case Phase.Idle:
+                RestorePlank();
                 SetText(platformSign, IdleText);
                 SetText(groundSign, "下はクッション\n安心して飛んでね");
                 break;
@@ -517,7 +643,7 @@ public class BungeeJump : MonoBehaviour
                 break;
             case Phase.Falling:
                 SetText(platformSign, "");
-                SetText(groundSign, "ナイスジャンプ！");
+                SetText(groundSign, PlankBroken ? "ドッキリ大成功！" : "ナイスジャンプ！");
                 break;
             case Phase.Landed:
                 SetText(platformSign, IdleText);

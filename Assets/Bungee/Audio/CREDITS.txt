@@ -11,3 +11,4 @@ ElevenLabs（Sound Effects / Text to Speech, Creator プランで作成：商用
   Bungee_heartbeat.mp3, Bungee_fall_wind.mp3, Bungee_cord_stretch.mp3, Bungee_plank_creak.mp3,
   Bungee_carabiner.mp3, Bungee_cushion_land.mp3
   Bungee_Voice_*.mp3（声: Liam, eleven_multilingual_v2）
+  Bungee_plank_break.mp3（板が折れる）, Bungee_mode_lever.mp3（モードのレバー）（2026-10-20）

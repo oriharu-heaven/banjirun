@@ -135,6 +135,16 @@ public class LedSign : MonoBehaviour
         }
     }
 
+    /// <summary>文字の色を変える（BungeeModeSwitch がモードに合わせて変える）</summary>
+    public void SetPalette(Color[] colors)
+    {
+        if (colors == null || colors.Length == 0) return;
+        palette = colors;
+        colorIndex = 0;
+        colorTimer = 0f;
+        baseColor = colors[0];
+    }
+
     void SetAll(string text)
     {
         float fit = 1f;

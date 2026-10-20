@@ -9,6 +9,7 @@ using UnityEngine;
 /// ホール東の窓（EastWin_Sash_02）を開けてバルコニーへ出て、鉄骨の階段でジャンプ台に上がり、ハーネスを付けて台の先の細い板から飛ぶ。
 /// 下（約 23 m 下の歩道）にはエアクッション、その上に戻る輪。位置は部屋モデルのバルコニー・窓・歩道から決める。
 /// 見た目: 鉄骨のトラスの門と腕・縞鋼板の床・電光掲示板（案内・カウントダウン・看板）・Tripo のモデル（ハーネス・クッション・板・滑車・係の人）。
+/// 階段を上がってすぐの手すりに、ドッキリモード（カウントダウンの途中で板が折れる）のレバー。
 /// 部品作りは BungeeBuilder.Props.cs。Tripo のモデルが無いときは、箱や筒で代わりを作る。
 /// </summary>
 public static partial class BungeeBuilder
@@ -181,6 +182,9 @@ public static partial class BungeeBuilder
         LedBoard(root, "HarnessSign", "ハーネスをつかんで付ける\n（グリップ / E キー）", P(1.5f, PlatformV1 - 0.45f, PlatformTop + 2.2f), outward, 0.07f,
             new LedStyle { palette = new[] { LedCyan, LedWhite } });
 
+        // ドッキリモードのレバー（階段を上がってすぐの、壁側の手すりに付ける）
+        var modeSwitch = CreateModeSwitch(root, steel, 0.48f);
+
         // 係の人（Tripo のモデル。フックの側に立ち、板へ歩いていく人の方を向く。声もここから）
         Vector3 staffFeet = P(2.45f, PlatformV1 - 0.24f, PlatformTop);
         var staff = PlaceModel(root, "Bungee_Staff", staffFeet, (outward * 0.35f - along).normalized, new Vector3(0f, 1.72f, 0f), false);
@@ -283,9 +287,12 @@ public static partial class BungeeBuilder
         bungee.shrinkSound = LoadClip("Mini_Shrink");
         bungee.growSound = LoadClip("Mini_Grow");
         bungee.voiceCount = new[] { "count_3", "count_2", "count_1", "count_bungee" }.Select(n => LoadClip("Bungee_Voice_" + n)).ToArray();
+        bungee.plankBreak = LoadClip("Bungee_plank_break");
+        bungee.modeLever = LoadClip("Bungee_mode_lever");
         bungee.windStreakMaterial = GetMaterial("WindStreak");
         bungee.wornHarnessModel = AssetDatabase.LoadAssetAtPath<GameObject>(HarnessModelPath);
         harness.bungee = bungee;
+        modeSwitch.bungee = bungee;
 
         string models = string.Join(", ", new[] { "Bungee_Cushion", "Bungee_Plank", "Bungee_Pulley", "Bungee_Staff" }
             .Select(n => $"{n} {(AssetDatabase.LoadAssetAtPath<GameObject>($"{ModelFolder}/{n}/{n}.fbx") != null ? "あり" : "なし（代わりの形）")}"));
@@ -348,6 +355,57 @@ public static partial class BungeeBuilder
             Part(pivot, PrimitiveType.Cube, new Vector3(0f, 0.002f, PlankLength - 0.06f), new Vector3(PlankWidth, 0.004f, 0.1f), "Hazard");
         }
         return pivot;
+    }
+
+    /// <summary>
+    /// ドッキリモードのレバー（BungeeModeSwitch）。壁側の手すり（Rail_B）の内側に箱を吊り、前にレバー（上 = ふつう、下 = ドッキリ）、
+    /// 手すりの上に今のモードを出す電光掲示板を立てる。u は壁からの距離。
+    /// 箱の後ろの面は上の横棒（太さ 5cm）の中に、上の面は横棒の下の面より 5mm 上に置く（面を同じ所に置くとチラつく）。
+    /// </summary>
+    static BungeeModeSwitch CreateModeSwitch(Transform root, Parts steel, float u)
+    {
+        const float railV = PlatformV1 - 0.03f;
+        const float width = 0.34f, height = 0.36f, depth = 0.12f;
+        var go = new GameObject("ModeSwitch");
+        go.transform.SetParent(root, false);
+        // forward は台の真ん中（使う人）の方
+        go.transform.SetPositionAndRotation(P(u, railV - 0.015f - depth / 2f, PlatformTop + 0.85f), Quaternion.LookRotation(-along));
+        Part(go.transform, PrimitiveType.Cube, Vector3.zero, new Vector3(width, height, depth), "Metal");
+        Part(go.transform, PrimitiveType.Cube, new Vector3(0f, 0f, depth / 2f + 0.005f), new Vector3(width - 0.03f, height - 0.03f, 0.008f), "SignFrame");
+        foreach (var (text, y, color) in new[] { ("ふつう", 0.11f, LedGreen), ("ドッキリ", -0.11f, LedRed) })
+        {
+            var label = NewText(new GameObject("Label_" + text), text, 0.03f, color);
+            label.transform.SetParent(go.transform, false);
+            label.transform.localPosition = new Vector3(0.085f, y, depth / 2f + 0.012f);
+            label.transform.localRotation = Quaternion.Euler(0f, 180f, 0f); // 文字は -z 側から読む向きに作られるので、使う人の方へ向ける
+        }
+        var hub = Part(go.transform, PrimitiveType.Cylinder, new Vector3(0f, 0f, depth / 2f + 0.015f), new Vector3(0.05f, 0.015f, 0.05f), "Metal");
+        hub.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+        var lever = new GameObject("Lever").transform;
+        lever.SetParent(go.transform, false);
+        lever.localPosition = new Vector3(0f, 0f, depth / 2f + 0.015f);
+        var rod = Part(lever, PrimitiveType.Cylinder, new Vector3(0f, 0f, 0.11f), new Vector3(0.022f, 0.11f, 0.022f), "Metal");
+        rod.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        Part(lever, PrimitiveType.Sphere, new Vector3(0f, 0f, 0.225f), Vector3.one * 0.055f, "Red");
+        // つかむ・E キーで使うための当たり判定（箱とレバーの届く所）
+        var box = go.AddComponent<BoxCollider>();
+        box.center = new Vector3(0f, 0f, 0.1f);
+        box.size = new Vector3(width, height + 0.04f, 0.32f);
+
+        // 手すりの上の掲示板（2 本の棒で手すりに立てる。棒の両端は手すりと掲示板の箱の中）
+        Vector3 signCenter = P(u, railV - 0.06f, PlatformTop + 1.33f);
+        var sign = LedBoard(root, "ModeSign", "ドッキリモード\n何かが起こる…", signCenter, along, 0.055f,
+            new LedStyle { palette = new[] { LedGreen, LedCyan }, bulbColor = new Color(0.4f, 1f, 0.6f) });
+        float signBottom = signCenter.y - (0.055f * 1.2f * 2f + 0.055f * 0.9f) / 2f - 0.005f;
+        foreach (float du in new[] { -0.15f, 0.15f })
+            steel.Rod(P(u + du, railV - 0.02f, PlatformTop + 1.07f), P(u + du, railV - 0.02f, signBottom), 0.01f);
+
+        var modeSwitch = go.AddComponent<BungeeModeSwitch>();
+        modeSwitch.lever = lever;
+        modeSwitch.sign = sign;
+        modeSwitch.normalColors = new[] { LedGreen, LedCyan };
+        modeSwitch.surpriseColors = new[] { LedRed, LedPink };
+        return modeSwitch;
     }
 
     /// <summary>クッションを置く所に止まっている車を、道路に沿ってずらす。</summary>

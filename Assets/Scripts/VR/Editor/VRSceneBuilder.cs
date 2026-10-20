@@ -14,7 +14,7 @@ using UnityEngine.XR.Interaction.Toolkit.Locomotion.Turning;
 /// メニュー「BanjiRun/VR/3. Build VR Scene」で、VR 版のシーン（VR_Prototype）を作る。
 /// 部屋とバンジーは GameSceneBuilder（画面版と共通）。ここで足すのは VR だけの物:
 /// XR Origin（XRI）・つかんで使う仕組み（VRUseOnGrab）・テレポート先・ヘッドセットが無いときのキーボード操作（酔い対策のビネットは今は付けない: ComfortVignette）。
-/// 移動: 左スティック, 向き: 右スティック左右, テレポート: 右スティックを前に倒して離す, ジャンプ: A, 使う: 触れるかレイを当ててグリップ,
+/// 移動: 左スティック, 向き: 右スティック左右（倒している間、倒した分だけの速さでずっと回る）, テレポート: 右スティックを前に倒して離す, ジャンプ: A, 使う: 触れるかレイを当ててグリップ,
 /// ミニキャラ ⇔ 等身大: B・Y（VRPlayerBody が XR Origin ごと縮める。ミニのときは段をよじ登る: ClimbAssist）
 /// </summary>
 public static class VRSceneBuilder
@@ -23,6 +23,10 @@ public static class VRSceneBuilder
 
     // 酔い対策のビネット（スティックで動く・回る間だけ視界の端を暗くする）。Quest で「周りが暗くなる」のが気になるとのことで外した（2026-10-19）。true にすると戻る
     const bool ComfortVignette = false;
+
+    // 右スティックで向きを変える速さ（いっぱいに倒したとき。度/秒）。少し倒すとゆっくり回るので、細かく向きを合わせられる。
+    // XRI の既定は 45° ずつ回る（SnapTurnProvider）だが、細かく合わせられないので、倒している間ずっと回る方（ContinuousTurnProvider）にした（2026-10-20）
+    const float TurnSpeed = 90f;
 
     // テレポートで降りられる床（部屋のモデルとバンジーの台）
     static readonly string[] TeleportFloors =
@@ -94,6 +98,20 @@ public static class VRSceneBuilder
         var transforms = rig.GetComponentsInChildren<Transform>(true);
         fallback.leftHand = transforms.FirstOrDefault(t => t.name == "Left Controller");
         fallback.rightHand = transforms.FirstOrDefault(t => t.name == "Right Controller");
+
+        // 向き: 右スティックを倒している間ずっと回る。XRI のサンプルの ControllerInputActionManager の「Smooth Turn」を入れると、
+        // 45° ずつ回る入力が止まり、倒した分だけ回る入力が有効になる（サンプルのスクリプトなので、名前で探して設定を書き換える）
+        foreach (var manager in rig.GetComponentsInChildren<MonoBehaviour>(true).Where(m => m != null && m.GetType().Name == "ControllerInputActionManager"))
+        {
+            var so = new SerializedObject(manager);
+            so.FindProperty("m_SmoothTurnEnabled").boolValue = true;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+        foreach (var turn in rig.GetComponentsInChildren<ContinuousTurnProvider>(true))
+        {
+            turn.turnSpeed = TurnSpeed;
+            PrefabUtility.RecordPrefabInstancePropertyModifications(turn);
+        }
 
         // 酔い対策: スティックで動く・回る間だけ視界の端を暗くする（ComfortVignette が true のときだけ）
         var vignettePrefab = ComfortVignette ? VRProjectSetup.FindSampleAsset<GameObject>("TunnelingVignette") : null;

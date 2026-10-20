@@ -14,6 +14,7 @@ using Debug = UnityEngine.Debug;
 /// BungeeDemoRecorder（メニュー「BanjiRun/VR/6. Record Bungee Demo」「BanjiRun/画面版/3. Record Bungee Demo」）が再生前にシーンへ置く。
 /// 操作は FirstPersonControls を通すので、移動・当たり判定・ドア・ハーネス・バンジーは実際のゲームと同じ動き。
 /// mini を true にすると、最初に M キーでミニキャラになってから同じ流れを通り（段はよじ登る）、最後に等身大に戻る。
+/// surprise を true にすると、ハーネスを付けたあと台のレバーでドッキリモードにし、カウントダウンの途中で板が折れて落ちる。
 /// </summary>
 [DefaultExecutionOrder(1000)]
 public class BungeeDemoDirector : MonoBehaviour
@@ -25,6 +26,7 @@ public class BungeeDemoDirector : MonoBehaviour
     public int fps = 30;
     public float timeLimit = 150f;
     public bool mini;
+    public bool surprise;
 
     const int AvatarLayer = 29;   // 外からのカメラにだけ映すプレイヤーの体
     const int CaptionLayer = 28;  // 字幕用カメラにだけ映す文字
@@ -58,6 +60,7 @@ public class BungeeDemoDirector : MonoBehaviour
     int frames;
     bool finished;
     bool jumped;
+    bool plankBroke;
 
     void Awake() => Time.captureFramerate = fps;
     void OnEnable() => BungeeJump.SoundPlayed += OnSound;
@@ -96,7 +99,13 @@ public class BungeeDemoDirector : MonoBehaviour
         cam.cullingMask &= ~((1 << AvatarLayer) | (1 << CaptionLayer));
         SetupRecording();
         yield return Run();
-        Finish(jumped && bungee.CurrentPhase == BungeeJump.Phase.Idle, jumped ? "完了" : "バンジーまでたどり着かなかった");
+        bool ok = jumped && bungee.CurrentPhase == BungeeJump.Phase.Idle;
+        if (surprise)
+        {
+            Debug.Log($"[Demo] ドッキリ: 板が折れた {plankBroke} / 戻ったあと板が元に戻った {!bungee.PlankBroken}");
+            ok &= plankBroke && !bungee.PlankBroken;
+        }
+        Finish(ok, jumped ? "完了" : "バンジーまでたどり着かなかった");
     }
 
     // ---- 台本 ----
@@ -118,7 +127,7 @@ public class BungeeDemoDirector : MonoBehaviour
         // ホールの中、窓から 4 m ほどの所から
         body.TeleportFeetTo(aisle - outward * 3.6f, Quaternion.LookRotation(outward).eulerAngles.y);
         string version = body is VRPlayerBody ? "VR 版" : "画面版";
-        Caption(mini ? $"BanjiRun ― ミニキャラでバンジー（{version}）" : $"BanjiRun ― 窓の外でバンジージャンプ（{version}）");
+        Caption(surprise ? $"BanjiRun ― ドッキリモード（{version}）" : mini ? $"BanjiRun ― ミニキャラでバンジー（{version}）" : $"BanjiRun ― 窓の外でバンジージャンプ（{version}）");
         yield return LookAt(glassCenter + Vector3.up * 0.4f, 1.5f);
         if (mini)
         {
@@ -146,6 +155,16 @@ public class BungeeDemoDirector : MonoBehaviour
         yield return Use();
         yield return Wait(0.8f);
 
+        if (surprise)
+        {
+            var lever = FindFirstObjectByType<BungeeModeSwitch>();
+            Caption("③ 手すりのレバーで、ドッキリモードに");
+            yield return LookAt(lever.transform.position, 1.0f);
+            yield return Use();
+            yield return Wait(1.2f);
+            Debug.Log($"[Demo]   ドッキリモード: {bungee.SurpriseMode}");
+        }
+
         Caption("④ 手すりの外は、床が透けている…");
         float vMid = Vector3.Dot(bungee.jumpEdge.position - balcony, along);
         Vector3 onGrating = Flat(balcony + along * vMid + outward * 2.2f) + deck;
@@ -159,10 +178,11 @@ public class BungeeDemoDirector : MonoBehaviour
 
         Caption("⑥ 3・2・1…");
         yield return LookAt(bungee.countdownSign.transform.position, 0.8f);
-        for (float w = 0f; w < 4f && bungee.countdownSign.text != "バンジー！"; w += Time.deltaTime) yield return null;
-        yield return Wait(0.25f);
+        for (float w = 0f; w < 4f && bungee.countdownSign.text != "バンジー！" && bungee.CurrentPhase == BungeeJump.Phase.Harnessed; w += Time.deltaTime) yield return null;
+        plankBroke = bungee.PlankBroken;
+        if (!plankBroke) yield return Wait(0.25f);
 
-        Caption("⑦ バンジー！");
+        Caption(plankBroke ? "⑦ 板が折れた！？" : "⑦ バンジー！");
         float t = 0f;
         while (bungee.CurrentPhase == BungeeJump.Phase.Harnessed && t < 3f)
         {

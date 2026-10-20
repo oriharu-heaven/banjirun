@@ -15,9 +15,9 @@ Assets/Scripts/
   Game/      共通（VR でも画面でも同じゲームの仕組み）。BanjiRun.Game.asmdef で XR を参照できないようにしてある
     PlayerBody.cs            体の窓口（足・頭・速さ、バンジー中に止めて外から動かす、移す、等身大 ⇔ ミニキャラ）。VR 版と画面版がこれを継ぐ
     ClimbAssist.cs           ミニキャラのとき、段に向かって歩くとよじ登る
-    IUsable.cs               手で使える物（ドア・窓・ハーネス）の共通の形
+    IUsable.cs               手で使える物（ドア・窓・ハーネス・モードのレバー）の共通の形
     FirstPersonControls.cs   キーボード・マウス・ゲームパッドの一人称操作（画面版はいつも、VR 版はヘッドセットが無いときだけ）
-    BungeeJump.cs, BungeeHarness.cs, CombinedMeshLightmap.cs
+    BungeeJump.cs, BungeeHarness.cs, BungeeModeSwitch.cs（ドッキリモードのレバー）, CombinedMeshLightmap.cs
     LedSign.cs, SpinPulse.cs  電光掲示板（点滅・色替え・流れる文字）と、戻る輪の回る光
   VR/        VR だけ（XRI・OpenXR を使う）
     VRPlayerBody.cs          XR Origin の体（移動は XRI のスティック・テレポート。ミニキャラは XR Origin ごと縮める）
@@ -77,6 +77,7 @@ Assets/Scripts/
 5. **Scene Stats** — VR シーンの重さ（ライト・コライダー・描画の回数）を測り、決まった 9 か所から見た画像を `Builds/SceneStats/latest/` に保存する（Quest の画質 `quest_*.png` とパソコンの画質 `pc_*.png`）。軽量化の前後を比べる用
 6. **Record Bungee Demo** — VR シーンで、窓を開けてバンジーを飛び、戻るまでを自動で操作して `Recordings/BungeeDemo.mp4` に録画する（ffmpeg が要る。git には入らない）
 7. **Record Mini Bungee Demo** — 同じ流れをミニキャラで（`Recordings/BungeeDemo_Mini_VR.mp4`）
+8. **Record Surprise Bungee Demo** — ドッキリモードにして、カウントダウンの途中で板が折れて落ちる流れ（`Recordings/BungeeDemo_Surprise_VR.mp4`）
 
 **BanjiRun/画面版**
 1. **Build Flat Scene** — `Flat_Prototype.unity` を作り直す
@@ -84,6 +85,7 @@ Assets/Scripts/
 3. **Record Bungee Demo** — 画面版で同じ流れを録画して `Recordings/BungeeDemo_Flat.mp4`
 4. **Record Mini Bungee Demo** — 画面版でミニキャラの流れを録画して `Recordings/BungeeDemo_Mini_Flat.mp4`
 5. **Build WebGL (unityroom)** — ブラウザ版を `Builds/WebGL/BanjiRun_日時/` に作る（下の「ブラウザ版（unityroom）」）
+6. **Record Surprise Bungee Demo** — 画面版でドッキリモードの流れを録画して `Recordings/BungeeDemo_Surprise_Flat.mp4`
 
 シーンを作るときに部屋のライトのベイクもするので、1 つ 1〜2 分かかる（M4 の Mac で約 1 分）。
 
@@ -140,13 +142,14 @@ Assets/Scripts/
 - ビルドすると Unity の対象が WebGL になる。そのあと Quest の APK を作るときは Android への切り替え（テクスチャの読み直し）で時間がかかる
 - WebGL のビルドでは URP が `Mobile_RPAsset` などの「シェーダーの間引き」の設定を自動で書き換える（XR のキーワードを外すなど）。Quest 用の設定なので、その書き換えはコミットに入れない（`git checkout` で戻す）
 
-## VR での操作（XRI の初期設定）
+## VR での操作（XRI の初期設定をもとに）
 
 - 左スティック: 移動
-- 右スティック 左右: 45° 回転 / 前に倒して離す: テレポート（床だけ。`VRSceneBuilder.TeleportFloors`）
+- 右スティック 左右: 倒している間ずっと回る（倒した分だけの速さ。いっぱいで 90°/秒。少し倒すとゆっくり回るので、細かく向きを合わせられる）/ 前に倒して離す: テレポート（床だけ。`VRSceneBuilder.TeleportFloors`）
+  - XRI の既定は 45° ずつ回る（`SnapTurnProvider`）。細かく合わせられないので、`ControllerInputActionManager` の Smooth Turn を入れて、倒している間ずっと回る方（`ContinuousTurnProvider`）にした（2026-10-20）。速さは `VRSceneBuilder.TurnSpeed`
 - 右 A ボタン: ジャンプ
 - B ボタン（右）・Y ボタン（左）: ミニキャラ ⇔ 等身大
-- グリップ: ドア・窓の開け閉め、ハーネスを付ける（触れるか、レイを当てて）
+- グリップ: ドア・窓の開け閉め、ハーネスを付ける、モードのレバー（触れるか、レイを当てて）
 - 酔い対策のビネット（動いている間だけ視界の端を暗くする）は、周りが暗くなるのが気になるので外した。戻すときは `VRSceneBuilder.ComfortVignette` を true にして 3. を実行する
 
 ## 画面版での操作
@@ -156,7 +159,7 @@ Assets/Scripts/
 | 移動 | WASD / 矢印（Shift で走る） | 左スティック（押し込みで走る） |
 | 見回す | マウス（クリックでカーソル固定、Esc で解除） | 右スティック |
 | ジャンプ | Space | A |
-| 使う（窓・ハーネス） | E / 左クリック | X / 右トリガー |
+| 使う（窓・ハーネス・モードのレバー） | E / 左クリック | X / 右トリガー |
 | ミニキャラ ⇔ 等身大 | M | Y |
 | 操作説明の表示 | H | — |
 
@@ -183,13 +186,19 @@ Assets/Scripts/
 - 戻る輪は、光る輪・回る内側の輪・上に消える光の筒・のぼる光の粒
 - Tripo のモデルが無いときは、今までの箱や筒の形で代わりを作る（`BungeeBuilder` のログに「モデル: …あり／なし」と出る）
 
+**ドッキリモード**（2026-10-20）: 階段を上がってすぐの、壁側の手すりにレバーの箱（`BungeeModeSwitch`）があり、つかむ（グリップ / E）と「ふつう ⇔ ドッキリ」が切り替わる。今のモードは上の電光掲示板（緑の「ふつうモード」／赤の「ドッキリモード」）とレバーの向き（上 = ふつう、下 = ドッキリ）で分かる。
+- ドッキリのときは、板の先でカウントダウンを待っていると、**途中（0.6〜2.6 秒のどこか。毎回ちがう）でバキッと板が付け根から折れ**、乗っている人ごと落ちる。係の人のカウントは途中で切れ、掲示板に「!?」、地上の案内は「ドッキリ大成功！」
+- そのあとはふつうに飛んだときと同じ（ロープで弾んで、クッションに降ろされる）。折れた板は回りながら外へ落ち、クッションの外の地面で止まる。光る輪で台へ戻ると、新しい板に戻る
+- 板が折れるのはハーネスを付けて板の先に立ったときだけ。折れる時の幅は `BungeeJump.breakWindow`
+- 音: 板が折れる音・レバーの音は ElevenLabs で作った（`Bungee_plank_break` `Bungee_mode_lever`）。折れた板が下に落ちた音は、クッションに着地する音を小さく鳴らしている
+
 ハーネスを付けずに落ちても、クッションで受け止める。ロープの強さ・弾む回数・降ろす速さ・板のしなりは `BungeeJump` のインスペクター（`cordLength` `stiffness` `bouncesBeforeLowering` `lowerSpeed` `plankDip` など）で変えられる。台・板・クッションの位置は `BungeeBuilder` が部屋モデルのバルコニー・窓・道路から決める（3. で作り直される）。クッションの場所に止まっていた車（`Car_00`）は、3. で道路に沿って 6m ずらしている。
 
 落ちている間は、体（`PlayerBody`）をスクリプトで動かし、ふつうの移動は止める（VR はスティック移動・重力・テレポート、画面版は FirstPersonControls）。画面版だけ、落ちる速さで視野が広がり、ロープが張った瞬間と着地で画面が揺れる（`FlatCameraEffects`）。**VR で 20m 落ちて地面すれすれで引き戻されるのはかなり酔いやすい**ので、実機で試して強さを決める必要がある（弱めるなら `cordLength` を短く・`stiffness` を上げる）。
 
 **音**（`Assets/Bungee/Audio/`、出どころは `CREDITS.txt`）: 台のまわりの風・心臓の音・板のきしみ・カラビナ・カウントダウンの声・飛び出す音・落ちる間の風・ロープが張る音・クッションに着地する音・歓声。OtoLogic（CC BY 4.0。公開するときはクレジットに「OtoLogic」と書く）と、ElevenLabs で作った音（Creator プラン、商用利用可）。
 
-**動画**: VR の 6. と画面版の 3.（ミニキャラは VR の 7. と画面版の 4.）で、1 人称の映像（右上に外から見た様子、下に字幕）と音を録画する。バッチモードでは Unity の音が鳴らないので、鳴らした音とループの音量をコマごとに記録し、あとで同じ音のファイルから重ねて映像とまとめる（録画中にスピーカーから音は出ない）。操作はキーボード・マウス操作と同じ入口（`FirstPersonControls`）を自動で動かすので、移動・当たり判定・窓・ハーネス・バンジーはゲームと同じ動き。自動操作は、歩く向きを顔の向きと別に決めて顔はなめらかに向け、入力は 1 コマ遅れで渡す（前は 2 コマ遅れで一気に向き直していたので、歩く間ずっと映像が左右に細かく揺れていた）。ロープが張る瞬間と着地の揺れは画面版の演出（`FlatCameraEffects`）。
+**動画**: VR の 6. と画面版の 3.（ミニキャラは VR の 7. と画面版の 4.、ドッキリモードは VR の 8. と画面版の 6.）で、1 人称の映像（右上に外から見た様子、下に字幕）と音を録画する。バッチモードでは Unity の音が鳴らないので、鳴らした音とループの音量をコマごとに記録し、あとで同じ音のファイルから重ねて映像とまとめる（録画中にスピーカーから音は出ない）。操作はキーボード・マウス操作と同じ入口（`FirstPersonControls`）を自動で動かすので、移動・当たり判定・窓・ハーネス・バンジーはゲームと同じ動き。自動操作は、歩く向きを顔の向きと別に決めて顔はなめらかに向け、入力は 1 コマ遅れで渡す（前は 2 コマ遅れで一気に向き直していたので、歩く間ずっと映像が左右に細かく揺れていた）。ロープが張る瞬間と着地の揺れは画面版の演出（`FlatCameraEffects`）。
 
 ## ミニキャラモード
 

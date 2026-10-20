@@ -61,6 +61,7 @@ Shader "BanjiRun/LedText"
 
             half4 frag(Varyings input) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input); // VR で両目を一度に描くとき、どちらの目かを決める
                 half shape = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv).a;
                 return half4(input.color.rgb * _Glow, input.color.a * shape);
             }

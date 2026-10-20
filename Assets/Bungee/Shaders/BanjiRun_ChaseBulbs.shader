@@ -69,6 +69,7 @@ Shader "BanjiRun/ChaseBulbs"
 
             half4 frag(Varyings input) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input); // VR で両目を一度に描くとき、どちらの目かを決める
                 half4 bulb = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv);
                 float head = floor(_Time.y * _Speed);
                 float chase = fmod(input.index + head, max(_Spacing, 1.0)) < 0.5 ? 1.0 : 0.0;

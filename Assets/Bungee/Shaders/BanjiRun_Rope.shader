@@ -66,6 +66,7 @@ Shader "BanjiRun/Rope"
 
             half4 frag(Varyings input) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input); // VR で両目を一度に描くとき、どちらの目かを決める
                 half4 rope = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv) * _BaseColor * input.color;
                 float distance = length(input.positionWS - GetCameraPositionWS());
                 rope.a *= saturate((distance - _FadeNear) / max(_FadeFar - _FadeNear, 0.001));

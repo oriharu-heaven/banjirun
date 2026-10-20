@@ -117,7 +117,7 @@ public static class VRSceneStats
         var renderers = Object.FindObjectsByType<MeshRenderer>(FindObjectsInactive.Exclude);
         int batchingStatic = renderers.Count(r => GameObjectUtility.AnyStaticEditorFlagsSet(r.gameObject, StaticEditorFlags.BatchingStatic));
         int lightmapped = renderers.Count(r => r.lightmapIndex >= 0 && r.lightmapIndex < 0xFFFE);
-        long triangles = renderers.Select(r => r.GetComponent<MeshFilter>()?.sharedMesh).Where(m => m != null).Sum(m => (long)m.triangles.Length / 3);
+        long triangles = renderers.Select(r => r.TryGetComponent<MeshFilter>(out var f) ? f.sharedMesh : null).Where(m => m != null).Sum(m => (long)m.triangles.Length / 3);
         Line($"メッシュの描画: {renderers.Length} 個, 三角形 {triangles:N0}, 静的バッチ対象 {batchingStatic}, ライトマップあり {lightmapped}");
 
         var maps = LightmapSettings.lightmaps;

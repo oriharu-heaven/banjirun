@@ -1,10 +1,16 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.XR;
+using UnityEngine.XR.Management;
 
 /// <summary>
 /// VR シーンをヘッドセットなしで再生したとき（Mac のエディターなど）、キーボード・マウス（FirstPersonControls）で動けるようにする。
 /// 頭と手の追跡を止め、手（コントローラー）は顔の前に構えた位置に置き、使うときは右手を伸ばす。
 /// ヘッドセットがあるときは何もしない（FirstPersonControls も止めたまま）。
+/// 「ヘッドセットがある」は、XR が動いている（isDeviceActive）か、XR の読み込み（OpenXR の loader）が動いているかで決める。
+/// Quest では起動に時間がかかると、最初のフレームではまだ isDeviceActive が false のことがあり、
+/// それだけで決めると、Quest なのにスティック移動と頭・手の追跡を止めてしまっていた（2026-10-20「VR 版が動かせない」）。
+/// 念のため、キーボード操作に切り替えた後でヘッドセットが動き出したら、元に戻す。
 /// 画面で遊ぶ版は別のシーン（Flat_Prototype）。こちらは VR シーンを手早く試す・録画する用。
 /// </summary>
 [RequireComponent(typeof(VRPlayerBody), typeof(FirstPersonControls))]
@@ -17,29 +23,48 @@ public class VRNoHeadsetFallback : MonoBehaviour
     const float ReachTime = 0.5f;
 
     FirstPersonControls controls;
+    VRPlayerBody body;
     Transform cam;
     float reachTimer;
     Vector3 reachTarget;
+    readonly List<UnityEngine.InputSystem.XR.TrackedPoseDriver> drivers = new List<UnityEngine.InputSystem.XR.TrackedPoseDriver>();
+
+    /// <summary>XR の読み込み（OpenXR など）が動いている。Quest ではいつも true、Mac のエディターでは false</summary>
+    static bool XRLoaderActive => XRGeneralSettings.Instance != null && XRGeneralSettings.Instance.Manager != null && XRGeneralSettings.Instance.Manager.activeLoader != null;
 
     void Start()
     {
         controls = GetComponent<FirstPersonControls>();
-        if (XRSettings.isDeviceActive)
+        body = GetComponent<VRPlayerBody>();
+        bool headset = XRSettings.isDeviceActive || XRLoaderActive;
+        Debug.Log($"[VR] ヘッドセット: {(headset ? "あり" : "なし（キーボード操作にする）")}（isDeviceActive={XRSettings.isDeviceActive}, loader={(XRLoaderActive ? XRGeneralSettings.Instance.Manager.activeLoader.name : "なし")}）");
+        if (headset)
         {
             controls.enabled = false;
             enabled = false;
             return;
         }
-        var body = GetComponent<VRPlayerBody>();
         body.KeyboardFallback = true;
         cam = body.Camera.transform;
-        foreach (var driver in GetComponentsInChildren<UnityEngine.InputSystem.XR.TrackedPoseDriver>(true)) driver.enabled = false;
+        GetComponentsInChildren(true, drivers);
+        foreach (var driver in drivers) driver.enabled = false;
         controls.enabled = true;
         controls.Used += point =>
         {
             reachTimer = ReachTime;
             reachTarget = point;
         };
+    }
+
+    void Update()
+    {
+        // キーボード操作に切り替えた後でヘッドセットが動き出したら、スティック移動と頭・手の追跡に戻す
+        if (!XRSettings.isDeviceActive) return;
+        Debug.Log("[VR] ヘッドセットが動き出したので、キーボード操作をやめる");
+        foreach (var driver in drivers) if (driver != null) driver.enabled = true;
+        controls.enabled = false;
+        body.KeyboardFallback = false;
+        enabled = false;
     }
 
     void LateUpdate()

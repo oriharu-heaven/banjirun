@@ -49,14 +49,18 @@ public class TimeAttackPlaytestRunner : MonoBehaviour
         }
 
         yield return LookAt(new Vector3(-7.75f, 1.4f, 1.95f), 0.3f);
+        CaptureShot("/tmp/shot_1_elevator_closed.png", "エレベーター閉扉");
+        float doorGapBefore = GetDoorVisualGap("EV_CarDoors_L", "EV_CarDoors_R", out int doorRenderers);
         yield return Use();
         yield return Wait(1.1f);
-        if (!manager.IsElevatorOpen)
+        CaptureShot("/tmp/shot_2_elevator_open.png", "エレベーター開扉");
+        float doorGapAfter = GetDoorVisualGap("EV_CarDoors_L", "EV_CarDoors_R", out _);
+        Debug.Log($"[WalkTest] 2. エレベーター扉オープン確認: renderers={doorRenderers}, gapBefore={doorGapBefore:F2}m -> gapAfter={doorGapAfter:F2}m");
+        if (!manager.IsElevatorOpen || doorRenderers == 0 || doorGapAfter - doorGapBefore < 0.7f)
         {
-            Finish(false, "Eキー操作後にエレベーターの扉が開きませんでした");
+            Finish(false, $"エレベーター扉の見た目オープンが不正: open={manager.IsElevatorOpen}, renderers={doorRenderers}, gap={doorGapBefore:F2}->{doorGapAfter:F2}");
             yield break;
         }
-        Debug.Log("[WalkTest] 2. エレベーター扉オープン完了");
 
         // 2. エレベーターから歩いてロビー（Floor_Entrance）へ出る
         Vector3 lobbyPoint = new Vector3(-7.75f, 0.02f, 0.74f);
@@ -68,12 +72,14 @@ public class TimeAttackPlaytestRunner : MonoBehaviour
         Transform doorLeaf = GameObject.Find("Door_Entrance_Leaf")?.transform;
         Vector3 doorCenter = doorLeaf != null ? doorLeaf.GetComponent<Renderer>().bounds.center : new Vector3(-6.63f, 1.0f, 0.74f);
         yield return LookAt(doorCenter, 0.4f);
+        CaptureShot("/tmp/shot_3_lobby.png", "ロビー入口");
         yield return Use();
         yield return Wait(0.8f);
 
         Vector3 insideEntrance = new Vector3(-5.55f, 0.02f, 0.74f);
         yield return WalkTo(insideEntrance, 8f);
         if (finished) yield break;
+        CaptureShot("/tmp/shot_4_classroom.png", "教室内部");
         Debug.Log($"[WalkTest] 4. 入口ドア通過成功: feet={body.Feet:F2}");
 
         // 4. 教室の中央通路を歩いて東の窓（EastWin_Sash_02）の前まで進む
@@ -105,13 +111,13 @@ public class TimeAttackPlaytestRunner : MonoBehaviour
         Debug.Log($"[WalkTest] 5. 教室を歩いて窓の前へ到達成功: feet={body.Feet:F2}");
 
         // 5. 窓を開けてバルコニーへ出て、階段を上がってハーネスを装着
-        yield return LookAt(glassCenter, 0.5f);
+        yield return LookAt(glassCenter, 0.8f);
         yield return Use();
-        yield return Wait(1.0f);
+        yield return Wait(1.5f);
 
-        yield return WalkTo(Flat(windowInside + outward * 1.3f) + floor, 8f);
+        yield return WalkTo(Flat(windowInside + outward * 1.3f) + floor, 10f);
         if (finished) yield break;
-        yield return WalkTo(balcony, 8f);
+        yield return WalkTo(balcony, 10f);
         if (finished) yield break;
         yield return WalkTo(Flat(balcony + along * 0.6f) + Vector3.up * balcony.y, 8f);
         if (finished) yield break;
@@ -229,7 +235,7 @@ public class TimeAttackPlaytestRunner : MonoBehaviour
         commands.look.y = (CurrentPitch() - 8f) * 0.1f;
         Vector3 dir = distance > 1e-4f ? to / distance : Vector3.zero;
         commands.move = new Vector2(Vector3.Dot(dir, right), Vector3.Dot(dir, forward));
-        commands.run = true;
+        commands.run = distance > 1.8f;
         yield return null;
     }
 
@@ -250,6 +256,56 @@ public class TimeAttackPlaytestRunner : MonoBehaviour
     }
 
     float CurrentPitch() => Mathf.DeltaAngle(0f, cam.transform.localEulerAngles.x);
+
+    static float GetDoorVisualGap(string leftName, string rightName, out int rendererCount)
+    {
+        rendererCount = 0;
+        var l = GameObject.Find(leftName);
+        var r = GameObject.Find(rightName);
+        if (l == null || r == null) return 0f;
+        var lr = l.GetComponentsInChildren<Renderer>(false);
+        var rr = r.GetComponentsInChildren<Renderer>(false);
+        rendererCount = lr.Length + rr.Length;
+        if (lr.Length == 0 || rr.Length == 0) return 0f;
+        Bounds bl = lr[0].bounds;
+        for (int i = 1; i < lr.Length; i++) bl.Encapsulate(lr[i].bounds);
+        Bounds br = rr[0].bounds;
+        for (int i = 1; i < rr.Length; i++) br.Encapsulate(rr[i].bounds);
+        return Mathf.Abs(bl.center.x - br.center.x);
+    }
+
+    void CaptureShot(string path, string label)
+    {
+        if (cam == null) return;
+        int w = 960, h = 540;
+        var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32);
+        var prevTarget = cam.targetTexture;
+        var prevActive = RenderTexture.active;
+        cam.targetTexture = rt;
+        cam.Render();
+        RenderTexture.active = rt;
+        var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+        tex.Apply();
+        cam.targetTexture = prevTarget;
+        RenderTexture.active = prevActive;
+        DestroyImmediate(rt);
+
+        var pixels = tex.GetPixels32();
+        double sumLum = 0;
+        int whiteCount = 0;
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            float lum = (0.2126f * pixels[i].r + 0.7152f * pixels[i].g + 0.0722f * pixels[i].b) / 255f;
+            sumLum += lum;
+            if (lum > 0.90f) whiteCount++;
+        }
+        float avgLum = (float)(sumLum / pixels.Length);
+        float whitePct = 100f * whiteCount / pixels.Length;
+        System.IO.File.WriteAllBytes(path, tex.EncodeToPNG());
+        DestroyImmediate(tex);
+        Debug.Log($"[WalkTest] Screenshot({label}): avgLum={avgLum:F3}, white(>0.90)={whitePct:F1}%, saved={path}");
+    }
 
     void Finish(bool ok, string msg)
     {

@@ -17,8 +17,14 @@ public class RoomLightDimmer : MonoBehaviour
     [SerializeField, HideInInspector] List<float> baseIntensities = new List<float>();
 
     bool probesDimmed;
+    bool materialsDimmed;
 
+    void Awake()
+    {
+        if (Application.isPlaying) Apply();
+    }
     void OnEnable() => Apply();
+    void Start() => ApplyRuntimeMaterialDimming();
     void OnValidate() => Apply();
 
     [ContextMenu("Recapture Base Intensities")]
@@ -64,10 +70,10 @@ public class RoomLightDimmer : MonoBehaviour
             }
         }
 
-        RenderSettings.ambientIntensity = 0.22f;
-        RenderSettings.reflectionIntensity = 0.20f;
+        RenderSettings.ambientIntensity = 0.06f;
+        RenderSettings.reflectionIntensity = 0.04f;
         foreach (var rp in Object.FindObjectsByType<ReflectionProbe>(FindObjectsSortMode.None))
-            rp.intensity = 0.20f;
+            rp.intensity = 0.04f;
 
         if (Application.isPlaying && !probesDimmed && LightmapSettings.lightProbes != null)
         {
@@ -76,8 +82,69 @@ public class RoomLightDimmer : MonoBehaviour
             if (baked != null && baked.Length > 0)
             {
                 for (int i = 0; i < baked.Length; i++)
-                    baked[i] = baked[i] * 0.22f;
+                    baked[i] = baked[i] * 0.08f;
                 LightmapSettings.lightProbes.bakedProbes = baked;
+            }
+        }
+
+        if (Application.isPlaying)
+            ApplyRuntimeMaterialDimming();
+    }
+
+    void ApplyRuntimeMaterialDimming()
+    {
+        if (!Application.isPlaying || materialsDimmed) return;
+        materialsDimmed = true;
+
+        const float baseScale = 0.36f;
+        const float whiteWallScale = 0.28f; // 白壁・白椅子などの高明度素材はさらに抑えて白飛びを 0% にする
+        const float emissionScale = 0.05f;
+        var dimmedMap = new Dictionary<Material, Material>();
+
+        var roots = new List<GameObject> { gameObject };
+        var combinedRoot = GameObject.Find("Combined Meshes");
+        if (combinedRoot != null) roots.Add(combinedRoot);
+
+        foreach (var root in roots)
+        {
+            foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+            {
+                var shared = r.sharedMaterials;
+                bool changed = false;
+                for (int i = 0; i < shared.Length; i++)
+                {
+                    var src = shared[i];
+                    if (src == null) continue;
+                    if (!dimmedMap.TryGetValue(src, out var dst))
+                    {
+                        dst = new Material(src) { name = src.name + "_Dimmed" };
+                        if (dst.HasProperty("_BaseColor"))
+                        {
+                            Color c = dst.GetColor("_BaseColor");
+                            float s = c.maxColorComponent > 0.75f ? whiteWallScale : baseScale;
+                            dst.SetColor("_BaseColor", new Color(c.r * s, c.g * s, c.b * s, c.a));
+                        }
+                        if (dst.HasProperty("_Color"))
+                        {
+                            Color c = dst.GetColor("_Color");
+                            float s = c.maxColorComponent > 0.75f ? whiteWallScale : baseScale;
+                            dst.SetColor("_Color", new Color(c.r * s, c.g * s, c.b * s, c.a));
+                        }
+                        if (dst.HasProperty("_EmissionColor"))
+                        {
+                            Color e = dst.GetColor("_EmissionColor");
+                            dst.SetColor("_EmissionColor", new Color(e.r * emissionScale, e.g * emissionScale, e.b * emissionScale, e.a));
+                        }
+                        if (dst.HasProperty("_Smoothness"))
+                        {
+                            dst.SetFloat("_Smoothness", Mathf.Min(dst.GetFloat("_Smoothness"), 0.30f));
+                        }
+                        dimmedMap[src] = dst;
+                    }
+                    shared[i] = dst;
+                    changed = true;
+                }
+                if (changed) r.sharedMaterials = shared;
             }
         }
     }

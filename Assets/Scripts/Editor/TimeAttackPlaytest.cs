@@ -18,6 +18,41 @@ public static class TimeAttackPlaytest
 
     public static void RunBatch()
     {
+        foreach (var guid in AssetDatabase.FindAssets("Lightmap-", new[] { "Assets/Scenes" }))
+        {
+            string p = AssetDatabase.GUIDToAssetPath(guid);
+            if (p.EndsWith(".exr")) AssetDatabase.ImportAsset(p, ImportAssetOptions.ForceUpdate);
+        }
+
+        string[] scenes = { "Assets/Scenes/VR_Prototype.unity", FlatSceneBuilder.ScenePath };
+        foreach (var sPath in scenes)
+        {
+            if (!System.IO.File.Exists(sPath)) continue;
+            var s = EditorSceneManager.OpenScene(sPath);
+            var dimmer = Object.FindFirstObjectByType<RoomLightDimmer>();
+            if (dimmer != null)
+            {
+                dimmer.brightness = 0.02f;
+                dimmer.Apply();
+                foreach (var t in dimmer.GetComponentsInChildren<Transform>(true))
+                {
+                    if (t.name.StartsWith("EV_CarDoors") || t.name.StartsWith("EV_LandingDoors") || t.name.StartsWith("CasterWagon"))
+                    {
+                        foreach (var child in t.GetComponentsInChildren<Transform>(true))
+                        {
+                            GameObjectUtility.SetStaticEditorFlags(child.gameObject, 0);
+                            if (child.TryGetComponent<MeshRenderer>(out var mr))
+                            {
+                                mr.receiveGI = ReceiveGI.LightProbes;
+                                mr.lightmapIndex = -1;
+                            }
+                        }
+                    }
+                }
+            }
+            EditorSceneManager.SaveScene(s);
+        }
+
         EditorSceneManager.OpenScene(FlatSceneBuilder.ScenePath);
         new GameObject("TimeAttackPlaytestRunner").AddComponent<TimeAttackPlaytestRunner>();
         EditorApplication.playModeStateChanged += OnPlayModeChanged;

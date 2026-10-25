@@ -59,6 +59,7 @@ public class TimeAttackManager : MonoBehaviour, IUsable
     BoxCollider doorTriggerCollider;
     Transform carDoorL, carDoorR, landingDoorL, landingDoorR;
     Vector3 carDoorLStart, carDoorRStart, landingDoorLStart, landingDoorRStart;
+    float carDoorLSign = -1f, carDoorRSign = 1f, landingDoorLSign = -1f, landingDoorRSign = 1f;
     bool elevatorOpening;
     bool elevatorOpened;
     float doorOpenProgress;
@@ -140,13 +141,12 @@ public class TimeAttackManager : MonoBehaviour, IUsable
     {
         doorOpenProgress = Mathf.MoveTowards(doorOpenProgress, 1f, dt / DoorSlideDuration);
         float t = Mathf.SmoothStep(0f, 1f, doorOpenProgress);
-        Vector3 slideL = new Vector3(DoorSlideDistance * t, 0f, 0f);
-        Vector3 slideR = new Vector3(-DoorSlideDistance * t, 0f, 0f);
+        float dist = DoorSlideDistance * t;
 
-        if (carDoorL != null) carDoorL.position = carDoorLStart + slideL;
-        if (landingDoorL != null) landingDoorL.position = landingDoorLStart + slideL;
-        if (carDoorR != null) carDoorR.position = carDoorRStart + slideR;
-        if (landingDoorR != null) landingDoorR.position = landingDoorRStart + slideR;
+        if (carDoorL != null) carDoorL.position = carDoorLStart + new Vector3(carDoorLSign * dist, 0f, 0f);
+        if (carDoorR != null) carDoorR.position = carDoorRStart + new Vector3(carDoorRSign * dist, 0f, 0f);
+        if (landingDoorL != null) landingDoorL.position = landingDoorLStart + new Vector3(landingDoorLSign * dist, 0f, 0f);
+        if (landingDoorR != null) landingDoorR.position = landingDoorRStart + new Vector3(landingDoorRSign * dist, 0f, 0f);
 
         if (doorOpenProgress >= 1f)
             elevatorOpened = true;
@@ -181,6 +181,22 @@ public class TimeAttackManager : MonoBehaviour, IUsable
             }
         }
 
+        const float doorwayCenterX = -7.75f;
+        carDoorLSign = GetDoorOutwardSign(carDoorL, doorwayCenterX, -1f);
+        carDoorRSign = GetDoorOutwardSign(carDoorR, doorwayCenterX, 1f);
+        if (Mathf.Approximately(carDoorLSign, carDoorRSign))
+        {
+            carDoorLSign = -1f;
+            carDoorRSign = 1f;
+        }
+        landingDoorLSign = GetDoorOutwardSign(landingDoorL, doorwayCenterX, carDoorLSign);
+        landingDoorRSign = GetDoorOutwardSign(landingDoorR, doorwayCenterX, carDoorRSign);
+        if (Mathf.Approximately(landingDoorLSign, landingDoorRSign))
+        {
+            landingDoorLSign = carDoorLSign;
+            landingDoorRSign = carDoorRSign;
+        }
+
         // エレベーターとロビーの間の隙間を滑らかに歩けるよう透明な床コライダーを敷く
         var bridge = new GameObject("ElevatorFloorBridge");
         bridge.transform.SetParent(transform, false);
@@ -207,6 +223,18 @@ public class TimeAttackManager : MonoBehaviour, IUsable
         }
     }
 
+    static float GetDoorOutwardSign(Transform doorRoot, float centerX, float fallbackSign)
+    {
+        if (doorRoot == null) return fallbackSign;
+        var renderers = doorRoot.GetComponentsInChildren<Renderer>(true);
+        if (renderers.Length == 0) return fallbackSign;
+        Bounds b = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+            b.Encapsulate(renderers[i].bounds);
+        float diff = b.center.x - centerX;
+        return Mathf.Abs(diff) > 0.01f ? Mathf.Sign(diff) : fallbackSign;
+    }
+
     static void SetDoorColliders(Transform doorRoot, bool enabled)
     {
         if (doorRoot == null) return;
@@ -223,6 +251,7 @@ public class TimeAttackManager : MonoBehaviour, IUsable
                 mf.mesh = Instantiate(mf.sharedMesh);
             if (t.TryGetComponent<Renderer>(out var r))
             {
+                r.lightmapIndex = -1;
                 r.enabled = false;
                 r.enabled = true;
             }

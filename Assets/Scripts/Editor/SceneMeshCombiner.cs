@@ -43,6 +43,14 @@ public class SceneMeshCombiner : IProcessSceneWithReport
     public static int Combine(GameObject room)
     {
         var moving = new HashSet<Transform>(room.GetComponentsInChildren<Door>(true).SelectMany(d => d.GetComponentsInChildren<Transform>(true)));
+        foreach (var t in room.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name.StartsWith("EV_CarDoors") || t.name.StartsWith("EV_LandingDoors") || t.name.StartsWith("CasterWagon"))
+            {
+                foreach (var child in t.GetComponentsInChildren<Transform>(true))
+                    moving.Add(child);
+            }
+        }
         var exterior = room.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == ExteriorGroup);
 
         var groups = new Dictionary<(Material material, int lightmap, Vector3Int cell, ShadowCastingMode shadows), List<Part>>();

@@ -12,7 +12,7 @@ public class TimeAttackRetryButton : MonoBehaviour, IUsable
     float pressTimer;
     Vector3 capRest;
 
-    public string UseHint => "最初からリトライ（R キーでも可）";
+    public string UseHint => "エレベーターを止めて扉を開ける（スタート）";
 
     void Awake()
     {
@@ -22,7 +22,7 @@ public class TimeAttackRetryButton : MonoBehaviour, IUsable
     public void Use(Vector3 actor)
     {
         pressTimer = 0.25f;
-        if (manager != null) manager.Retry();
+        if (manager != null) manager.OpenElevator();
     }
 
     void Update()

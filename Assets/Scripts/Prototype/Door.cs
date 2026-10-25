@@ -15,7 +15,9 @@ public class Door : MonoBehaviour, IUsable
     float targetAngle;
 
     public bool IsOpen => !Mathf.Approximately(targetAngle, 0f);
-    public string UseHint => IsOpen ? "閉める" : "開ける";
+    public string UseHint => name.Contains("Win")
+        ? (IsOpen ? "窓を閉める" : "窓を開ける（外へ出る）")
+        : (IsOpen ? "ドアを閉める" : "ドアを開ける");
     public void Use(Vector3 actor) => Toggle(actor);
 
     void Awake()

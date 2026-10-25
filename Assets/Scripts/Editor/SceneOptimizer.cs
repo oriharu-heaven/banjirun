@@ -57,7 +57,7 @@ public static class SceneOptimizer
     [InitializeOnLoadMethod]
     static void RefreshTonedLightmapsOnce()
     {
-        const string key = "BanjiRun_TonedLightmaps_v1";
+        const string key = "BanjiRun_TonedLightmaps_v2";
         if (SessionState.GetBool(key, false)) return;
         SessionState.SetBool(key, true);
         EditorApplication.delayCall += () =>
@@ -92,6 +92,11 @@ public static class SceneOptimizer
     public static void PrepareRoom(GameObject room)
     {
         var moving = new HashSet<Transform>(room.GetComponentsInChildren<Door>(true).SelectMany(d => d.GetComponentsInChildren<Transform>(true)));
+        foreach (var t in room.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name.StartsWith("EV_CarDoors") || t.name.StartsWith("EV_LandingDoors") || t.name.StartsWith("CasterWagon"))
+                moving.Add(t);
+        }
         var exterior = room.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == ExteriorGroup);
 
         int statics = 0, probeLit = 0;

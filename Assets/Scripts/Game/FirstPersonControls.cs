@@ -161,6 +161,40 @@ public class FirstPersonControls : MonoBehaviour
             focusPoint = hit.point;
             break;
         }
+        if (focused != null) return;
+
+        // 照準が少しずれていても、目の前のドア・窓・ハーネス・ボタンに触れられるよう太い判定で補う
+        var sphereHits = Physics.SphereCastAll(cam.position, 0.35f, cam.forward, distance, ~0, QueryTriggerInteraction.Collide);
+        foreach (var hit in sphereHits.OrderBy(h => h.distance))
+        {
+            if (hit.transform.IsChildOf(transform)) continue;
+            var u = hit.collider.GetComponentInParent<IUsable>();
+            if (u == null) continue;
+            focused = u;
+            focusPoint = hit.point != Vector3.zero ? hit.point : hit.collider.bounds.center;
+            return;
+        }
+
+        // さらに足元〜胸元の近くにある使える物（近づいたとき直感的にガイドを出す）
+        float nearRadius = 1.65f * Mathf.Max(Mathf.Sqrt(body.Scale), minReachScale);
+        var cols = Physics.OverlapSphere(transform.position + Vector3.up * (eyeHeight * 0.6f * body.Scale), nearRadius, ~0, QueryTriggerInteraction.Collide);
+        float bestDist = float.MaxValue;
+        foreach (var col in cols)
+        {
+            if (col.transform.IsChildOf(transform)) continue;
+            var u = col.GetComponentInParent<IUsable>();
+            if (u == null) continue;
+            Vector3 center = col.bounds.center;
+            Vector3 toTarget = center - cam.position;
+            if (Vector3.Dot(toTarget.normalized, cam.forward) < 0.35f) continue;
+            float d = toTarget.sqrMagnitude;
+            if (d < bestDist)
+            {
+                bestDist = d;
+                focused = u;
+                focusPoint = center;
+            }
+        }
     }
 
     public static void SetCursorLocked(bool locked)

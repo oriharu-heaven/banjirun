@@ -2,14 +2,12 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 教室タイムアタックの進行管理（VR 版・画面版共通、XR 非依存）。
-/// 1. スタート: 入口ドア（Door_Entrance）付近にプレイヤーを配置し、「3, 2, 1, スタート！」のカウントダウンで計測開始
-/// 2. ゴール: 部屋の奥（ステージ上）の「ばんじー」オブジェクトに触れたら計測停止
-/// 3. 表示: 画面版は FlatHUD、VR 版はワールド空間の LedSign（スタート頭上・ゴール頭上）で経過時間を表示
-/// 4. クリア時: タイム表示 + 「ばんじー誕生日おめでとう！」 + 一枚絵（Assets/Bungee/Textures/BirthdayCard.png があれば表示、なければスキップ）
-/// 5. リトライ: R キー / ゲームパッド Select / VR 左手 X・メニューボタン / ワールド内のリトライボタン（IUsable）でスタートへ戻す
+/// エレベーターからのスタート演出と、バンジー着地時のお祝い画像表示を管理する（VR 版・画面版共通、XR 非依存）。
+/// 1. スタート: エレベーター内（PlayerSpawn_Elevator）に配置。正面の扉に「START」表示が出て、E キー / クリック / VR グリップでエレベーターが止まり扉が開く
+/// 2. 移動: エレベーターを出て入口ドアを開け、教室を歩いて窓から外（バンジー台）へ出る
+/// 3. 着地時: バンジーで地面のクッションに着地したとき（BungeeJump.Phase.Landed）、「ばんじー誕生日おめでとう！」と画像（BirthdayCard.png）を表示する
 /// </summary>
-public class TimeAttackManager : MonoBehaviour
+public class TimeAttackManager : MonoBehaviour, IUsable
 {
     public enum State { Countdown, Running, Cleared }
 
@@ -25,72 +23,58 @@ public class TimeAttackManager : MonoBehaviour
     public TextMesh startSign;
     public TextMesh goalSign;
 
-    [Header("クリア時の一枚絵（Assets/Bungee/Textures/BirthdayCard.png があれば表示）")]
+    [Header("着地時の一枚絵（Assets/Bungee/Textures/BirthdayCard.png）")]
     public Texture2D birthdayCard;
     public GameObject birthdayCardBoard;
     public Renderer birthdayCardRenderer;
 
     [Header("音")]
-    public AudioClip[] voiceCount; // 3, 2, 1, スタート
+    public AudioClip[] voiceCount;
     public AudioClip cheerSound;
     public AudioClip niceVoice;
     public AudioClip retrySound;
 
-    public State CurrentState { get; private set; }
-    public float CountdownRemaining => Mathf.Max(0f, countdownTimer);
-    public int CountdownNumber => Mathf.Clamp(Mathf.CeilToInt(countdownTimer), 1, 3);
-    public float ElapsedTime { get; private set; }
-    public float ClearTime { get; private set; }
-    public float BestTime { get; private set; }
-    public bool ShowStartBanner => CurrentState == State.Running && startBannerTimer > 0f;
+    public State CurrentState { get; private set; } = State.Running;
+    public float CountdownRemaining => 0f;
+    public int CountdownNumber => 0;
+    public float ElapsedTime => 0f;
+    public float ClearTime => 0f;
+    public float BestTime => 0f;
+    public bool ShowStartBanner => false;
+
+    public bool IsElevatorWaiting => !elevatorOpening && !elevatorOpened;
+    public bool ShowBirthdayCard => bungee != null && bungee.CurrentPhase == BungeeJump.Phase.Landed;
+    public string UseHint => "エレベーターを止めて扉を開ける（スタート）";
+
+    static readonly Vector3 ElevatorSpawn = new Vector3(-7.75f, 0.02f, 2.85f);
+    const float ElevatorYaw = 180f;
+    const float DoorSlideDistance = 0.48f;
+    const float DoorSlideDuration = 1.0f;
 
     PlayerBody body;
     FirstPersonControls controls;
     BungeeJump bungee;
     AudioSource sfx;
-    LedSign startLed, goalLed;
-    InputAction vrRetryAction;
-    Vector3 goalFigureRestPos;
-    float countdownTimer;
-    int lastCountShown = -1;
-    float startBannerTimer;
-    bool lockedByCountdown;
+    BoxCollider doorTriggerCollider;
+    Transform carDoorL, carDoorR, landingDoorL, landingDoorR;
+    Vector3 carDoorLStart, carDoorRStart, landingDoorLStart, landingDoorRStart;
+    bool elevatorOpening;
+    bool elevatorOpened;
+    float doorOpenProgress;
 
-    static readonly Color[] RunningColors = { new Color(0.2f, 0.9f, 1f), new Color(0.25f, 1f, 0.35f) };
-    static readonly Color[] ClearColors =
-    {
-        new Color(1f, 0.3f, 0.75f),
-        new Color(1f, 0.92f, 0.2f),
-        new Color(0.2f, 0.9f, 1f),
-        new Color(0.25f, 1f, 0.35f),
-    };
-
-    void Awake()
-    {
-        vrRetryAction = new InputAction("TimeAttackRetry", InputActionType.Button);
-        vrRetryAction.AddBinding("<XRController>{LeftHand}/primaryButton");
-        vrRetryAction.AddBinding("<XRController>{LeftHand}/menu");
-    }
-
-    void OnEnable() => vrRetryAction?.Enable();
-    void OnDisable()
-    {
-        vrRetryAction?.Disable();
-        ReleaseCountdownLock();
-    }
-    void OnDestroy() => vrRetryAction?.Dispose();
+    public void Use(Vector3 actor) => OpenElevator();
+    public void Retry() => OpenElevator();
 
     void Start()
     {
         body = FindFirstObjectByType<PlayerBody>();
         controls = FindFirstObjectByType<FirstPersonControls>();
         bungee = FindFirstObjectByType<BungeeJump>();
-        if (startSign != null) startLed = startSign.GetComponentInParent<LedSign>();
-        if (goalSign != null) goalLed = goalSign.GetComponentInParent<LedSign>();
-        if (goalFigure != null) goalFigureRestPos = goalFigure.localPosition;
 
         if (body != null && body.Camera != null)
         {
+            // 既存シーンの静的オクルージョンでエレベーター扉の奥が消えるのを防ぐ
+            body.Camera.useOcclusionCulling = false;
             sfx = body.Camera.gameObject.AddComponent<AudioSource>();
             sfx.playOnAwake = false;
         }
@@ -99,9 +83,148 @@ public class TimeAttackManager : MonoBehaviour
         if (birthdayCard == null)
             birthdayCard = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Bungee/Textures/BirthdayCard.png");
 #endif
-        ApplyBirthdayCardTexture();
+
+        CleanupOldTimeAttackProps();
         ClearWalkObstacles();
-        BeginRun(teleportToStart: true);
+        SetupElevatorDoors();
+        SetupLandingBirthdayBoard();
+
+        if (body != null)
+            body.TeleportFeetTo(ElevatorSpawn, ElevatorYaw);
+    }
+
+    void Update()
+    {
+        if (body == null) return;
+        if (controls != null && controls.Scripted) return;
+
+        // エレベーター内でスタート待ちのとき、E キーまたはクリックでエレベーターを止めて扉を開ける
+        if (IsElevatorWaiting && StartPressed())
+            OpenElevator();
+
+        if (elevatorOpening && !elevatorOpened)
+            AnimateElevatorDoors(Time.deltaTime);
+
+        UpdateLandingBirthdayBoard();
+    }
+
+    public void OpenElevator()
+    {
+        if (elevatorOpening || elevatorOpened) return;
+        elevatorOpening = true;
+        doorOpenProgress = 0f;
+        Play(retrySound, 0.9f);
+
+        if (startSign != null)
+            startSign.transform.parent.gameObject.SetActive(false);
+        if (doorTriggerCollider != null)
+            doorTriggerCollider.enabled = false;
+    }
+
+    void AnimateElevatorDoors(float dt)
+    {
+        doorOpenProgress = Mathf.MoveTowards(doorOpenProgress, 1f, dt / DoorSlideDuration);
+        float t = Mathf.SmoothStep(0f, 1f, doorOpenProgress);
+        Vector3 slideL = new Vector3(DoorSlideDistance * t, 0f, 0f);
+        Vector3 slideR = new Vector3(-DoorSlideDistance * t, 0f, 0f);
+
+        if (carDoorL != null) carDoorL.position = carDoorLStart + slideL;
+        if (landingDoorL != null) landingDoorL.position = landingDoorLStart + slideL;
+        if (carDoorR != null) carDoorR.position = carDoorRStart + slideR;
+        if (landingDoorR != null) landingDoorR.position = landingDoorRStart + slideR;
+
+        if (doorOpenProgress >= 1f)
+            elevatorOpened = true;
+    }
+
+    void SetupElevatorDoors()
+    {
+        foreach (var t in FindObjectsByType<Transform>(FindObjectsSortMode.None))
+        {
+            switch (t.name)
+            {
+                case "EV_CarDoors_L":
+                    carDoorL = t;
+                    carDoorLStart = t.position;
+                    MakeDynamicRecursive(t);
+                    break;
+                case "EV_CarDoors_R":
+                    carDoorR = t;
+                    carDoorRStart = t.position;
+                    MakeDynamicRecursive(t);
+                    break;
+                case "EV_LandingDoors_L":
+                    landingDoorL = t;
+                    landingDoorLStart = t.position;
+                    MakeDynamicRecursive(t);
+                    break;
+                case "EV_LandingDoors_R":
+                    landingDoorR = t;
+                    landingDoorRStart = t.position;
+                    MakeDynamicRecursive(t);
+                    break;
+            }
+        }
+
+        // エレベーターとロビーの間の隙間を滑らかに歩けるよう透明な床コライダーを敷く
+        var bridge = new GameObject("ElevatorFloorBridge");
+        bridge.transform.SetParent(transform, false);
+        bridge.transform.position = new Vector3(-7.75f, -0.05f, 1.75f);
+        var bridgeCol = bridge.AddComponent<BoxCollider>();
+        bridgeCol.size = new Vector3(1.3f, 0.1f, 0.65f);
+
+        // エレベーター扉正面に「START」表示を配置（扉 Z=1.96 から 9cm 手前の Z=2.05 で面重なり 0）
+        if (startSign != null)
+        {
+            var signRoot = startSign.transform.parent;
+            signRoot.gameObject.SetActive(true);
+            signRoot.SetPositionAndRotation(new Vector3(-7.75f, 1.48f, 2.05f), Quaternion.LookRotation(Vector3.back));
+            signRoot.localScale = Vector3.one * 0.62f;
+            startSign.text = "START\n扉を開ける";
+        }
+
+        // エレベーター扉全体を見つめたときにガイド「E / クリック：エレベーターを止めて扉を開ける（スタート）」が出る判定
+        transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+        doorTriggerCollider = gameObject.GetComponent<BoxCollider>();
+        if (doorTriggerCollider == null) doorTriggerCollider = gameObject.AddComponent<BoxCollider>();
+        doorTriggerCollider.center = new Vector3(-7.75f, 1.15f, 2.02f);
+        doorTriggerCollider.size = new Vector3(1.05f, 2.1f, 0.16f);
+        doorTriggerCollider.enabled = true;
+    }
+
+    static void MakeDynamicRecursive(Transform root)
+    {
+        foreach (var t in root.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.TryGetComponent<Renderer>(out var r))
+            {
+                r.enabled = false;
+                t.gameObject.isStatic = false;
+                r.enabled = true;
+            }
+            else
+            {
+                t.gameObject.isStatic = false;
+            }
+        }
+    }
+
+    void CleanupOldTimeAttackProps()
+    {
+        if (goalFigure != null)
+        {
+            var holder = goalFigure.parent != null && goalFigure.parent != transform ? goalFigure.parent : goalFigure;
+            holder.gameObject.SetActive(false);
+        }
+        if (goalSign != null && goalSign.transform.parent != null)
+            goalSign.transform.parent.gameObject.SetActive(false);
+
+        foreach (var t in GetComponentsInChildren<Transform>(true))
+        {
+            if (t == transform) continue;
+            if (t.name == "StartRetryButton" || t.name == "GoalRetryButton" || t.name == "ReturnPadEffect")
+                t.gameObject.SetActive(false);
+        }
     }
 
     static void ClearWalkObstacles()
@@ -116,163 +239,45 @@ public class TimeAttackManager : MonoBehaviour
         {
             if (r.name.StartsWith("CasterWagon") && r.transform.position.x < -4.5f)
             {
+                r.enabled = false;
                 r.gameObject.isStatic = false;
                 r.transform.position += new Vector3(1.8f, 0f, 0f);
+                r.enabled = true;
             }
         }
     }
 
-    void Update()
+    void SetupLandingBirthdayBoard()
     {
-        if (body == null) return;
+        ApplyBirthdayCardTexture();
+        if (birthdayCardBoard == null) return;
+        birthdayCardBoard.SetActive(false);
 
-        // バンジーの自動デモ録画中（BungeeDemoDirector）は干渉しないようロックを解除して待機する
-        if (controls != null && controls.Scripted)
+        // バンジー着地クッションの正面（GroundSign のすぐ横）に配置して、着地した瞬間に目の前にも出るようにする
+        if (bungee != null && bungee.cushion != null && bungee.groundSign != null)
         {
-            ReleaseCountdownLock();
-            return;
-        }
-
-        if (RetryPressed() && !IsBungeeBusy())
-        {
-            Retry();
-            return;
-        }
-
-        float dt = Time.deltaTime;
-        switch (CurrentState)
-        {
-            case State.Countdown:
-                UpdateCountdown(dt);
-                break;
-            case State.Running:
-                UpdateRunning(dt);
-                break;
-            case State.Cleared:
-                AnimateGoalCelebration(dt);
-                break;
+            Transform gs = bungee.groundSign.transform.parent != null ? bungee.groundSign.transform.parent : bungee.groundSign.transform;
+            Vector3 toCushion = Vector3.ProjectOnPlane(bungee.cushion.position - gs.position, Vector3.up).normalized;
+            if (toCushion.sqrMagnitude < 0.01f) toCushion = Vector3.right;
+            Vector3 boardPos = gs.position + Vector3.up * 1.15f;
+            birthdayCardBoard.transform.SetPositionAndRotation(boardPos, Quaternion.LookRotation(-toCushion));
+            birthdayCardBoard.transform.localScale = Vector3.one * 1.35f;
         }
     }
 
-    public void Retry()
+    void UpdateLandingBirthdayBoard()
     {
-        if (body == null || IsBungeeBusy()) return;
-        Play(retrySound, 0.8f);
-        BeginRun(teleportToStart: true);
-    }
-
-    void BeginRun(bool teleportToStart)
-    {
-        ReleaseCountdownLock();
-        if (entranceDoor is IUsable doorUsable && doorUsable.UseHint == "開ける")
-            doorUsable.Use(startPoint != null ? startPoint.position - startPoint.forward : transform.position);
-
-        if (teleportToStart && startPoint != null && body != null)
-            body.TeleportFeetTo(startPoint.position, startPoint.eulerAngles.y);
-
-        if (body != null && !body.Locked)
+        bool landed = ShowBirthdayCard;
+        if (birthdayCardBoard != null && birthdayCard != null && birthdayCardBoard.activeSelf != landed)
         {
-            body.BeginExternalMotion();
-            lockedByCountdown = true;
+            if (landed) ApplyBirthdayCardTexture();
+            birthdayCardBoard.SetActive(landed);
         }
-
-        ElapsedTime = 0f;
-        countdownTimer = 3f;
-        lastCountShown = -1;
-        startBannerTimer = 0f;
-        CurrentState = State.Countdown;
-
-        if (birthdayCardBoard != null) birthdayCardBoard.SetActive(false);
-        if (goalFigure != null)
+        if (landed && bungee != null && bungee.groundSign != null)
         {
-            goalFigure.localPosition = goalFigureRestPos;
-            goalFigure.localRotation = Quaternion.identity;
+            const string msg = "ばんじー誕生日おめでとう！\n光る輪で上に戻る";
+            if (bungee.groundSign.text != msg) bungee.groundSign.text = msg;
         }
-        if (startLed != null) startLed.SetPalette(RunningColors);
-        if (goalLed != null) goalLed.SetPalette(RunningColors);
-        SetText(goalSign, "★ GOAL ばんじー ★\nタッチでゴール！");
-    }
-
-    void UpdateCountdown(float dt)
-    {
-        countdownTimer -= dt;
-        int n = Mathf.CeilToInt(countdownTimer);
-        if (n >= 1 && n <= 3 && n != lastCountShown)
-        {
-            lastCountShown = n;
-            SetText(startSign, $"タイムアタック\n{n}");
-            SetText(goalSign, $"★ GOAL ばんじー ★\nカウントダウン {n}");
-            if (voiceCount != null && 3 - n < voiceCount.Length)
-                Play(voiceCount[3 - n], 0.9f);
-        }
-
-        if (countdownTimer <= 0f)
-        {
-            ReleaseCountdownLock();
-            CurrentState = State.Running;
-            ElapsedTime = 0f;
-            startBannerTimer = 1.1f;
-            SetText(startSign, "スタート！\n奥のばんじーへ走れ！");
-            SetText(goalSign, "★ GOAL ばんじー ★\nTIME  00.00");
-            if (voiceCount != null && voiceCount.Length > 3)
-                Play(voiceCount[3], 0.95f);
-        }
-    }
-
-    void UpdateRunning(float dt)
-    {
-        ElapsedTime += dt;
-        if (startBannerTimer > 0f) startBannerTimer -= dt;
-
-        string formatted = FormatTime(ElapsedTime);
-        if (startBannerTimer <= 0f)
-            SetText(startSign, $"TIME  {formatted}\nR キー / ボタンでリトライ");
-        SetText(goalSign, $"★ GOAL ばんじー ★\nTIME  {formatted}");
-
-        if (ReachedGoal())
-            Clear();
-    }
-
-    bool ReachedGoal()
-    {
-        if (goalPoint == null || body == null) return false;
-        Vector3 feet = body.Feet;
-        Vector3 diff = feet - goalPoint.position;
-        float horizontal = new Vector2(diff.x, diff.z).magnitude;
-        if (horizontal <= goalRadius && Mathf.Abs(diff.y) <= goalHeightTolerance) return true;
-
-        Vector3 headDiff = body.Head - (goalPoint.position + Vector3.up * 0.9f);
-        return new Vector2(headDiff.x, headDiff.z).magnitude <= goalRadius && Mathf.Abs(headDiff.y) <= goalHeightTolerance;
-    }
-
-    void Clear()
-    {
-        CurrentState = State.Cleared;
-        ClearTime = ElapsedTime;
-        if (BestTime <= 0f || ClearTime < BestTime) BestTime = ClearTime;
-
-        Play(cheerSound, 0.85f);
-        Play(niceVoice, 0.9f);
-
-        string clearMsg = $"ばんじー誕生日おめでとう！\nCLEAR!  {FormatTime(ClearTime)}";
-        if (startLed != null) startLed.SetPalette(ClearColors);
-        if (goalLed != null) goalLed.SetPalette(ClearColors);
-        SetText(startSign, clearMsg);
-        SetText(goalSign, clearMsg);
-
-        if (birthdayCard != null && birthdayCardBoard != null)
-        {
-            ApplyBirthdayCardTexture();
-            birthdayCardBoard.SetActive(true);
-        }
-    }
-
-    void AnimateGoalCelebration(float dt)
-    {
-        if (goalFigure == null) return;
-        float hop = Mathf.Abs(Mathf.Sin(Time.time * 5.5f)) * 0.14f;
-        goalFigure.localPosition = goalFigureRestPos + Vector3.up * hop;
-        goalFigure.Rotate(0f, 90f * dt, 0f, Space.Self);
     }
 
     void ApplyBirthdayCardTexture()
@@ -285,24 +290,13 @@ public class TimeAttackManager : MonoBehaviour
         birthdayCardRenderer.SetPropertyBlock(block);
     }
 
-    bool RetryPressed()
+    bool StartPressed()
     {
         var kb = Keyboard.current;
-        if (kb != null && kb.rKey.wasPressedThisFrame) return true;
+        if (kb != null && kb.eKey.wasPressedThisFrame) return true;
         var pad = Gamepad.current;
-        if (pad != null && pad.selectButton.wasPressedThisFrame) return true;
-        if (vrRetryAction != null && vrRetryAction.WasPressedThisFrame()) return true;
+        if (pad != null && (pad.buttonWest.wasPressedThisFrame || pad.rightTrigger.wasPressedThisFrame || pad.startButton.wasPressedThisFrame)) return true;
         return false;
-    }
-
-    bool IsBungeeBusy() =>
-        bungee != null && (bungee.CurrentPhase == BungeeJump.Phase.Falling || bungee.CurrentPhase == BungeeJump.Phase.Lowering);
-
-    void ReleaseCountdownLock()
-    {
-        if (!lockedByCountdown) return;
-        lockedByCountdown = false;
-        if (body != null && body.Locked) body.EndExternalMotion();
     }
 
     void Play(AudioClip clip, float volume)
@@ -311,16 +305,5 @@ public class TimeAttackManager : MonoBehaviour
         sfx.PlayOneShot(clip, volume);
     }
 
-    static void SetText(TextMesh tm, string text)
-    {
-        if (tm != null && tm.text != text) tm.text = text;
-    }
-
-    public static string FormatTime(float seconds)
-    {
-        seconds = Mathf.Max(0f, seconds);
-        int mins = Mathf.FloorToInt(seconds / 60f);
-        float rem = seconds - mins * 60f;
-        return mins > 0 ? $"{mins}:{rem:00.00}" : $"{rem:00.00} 秒";
-    }
+    public static string FormatTime(float seconds) => $"{seconds:00.00} 秒";
 }

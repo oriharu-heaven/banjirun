@@ -37,25 +37,37 @@ public class RoomLightDimmer : MonoBehaviour
     public void Apply()
     {
         if (lights.Count == 0) Capture();
-        // 旧設定（0.1）で白飛びしていたシーンでも自動で 0.03 に抑える
-        float effectiveBrightness = Mathf.Min(brightness, 0.035f);
+        // 旧設定（0.1）で白飛びしていたシーンでも自動で 0.02 に抑える
+        float effectiveBrightness = Mathf.Min(brightness, 0.02f);
+        bool hasBakedLightmaps = LightmapSettings.lightmaps != null && LightmapSettings.lightmaps.Length > 0;
+#if UNITY_EDITOR
+        bool isBaking = UnityEditor.Lightmapping.isRunning;
+#else
+        bool isBaking = false;
+#endif
         for (int i = 0; i < lights.Count; i++)
         {
             Light l = lights[i];
             if (l == null) continue;
             l.intensity = baseIntensities[i] * effectiveBrightness;
-            l.bounceIntensity = 0.5f;
+            l.bounceIntensity = 0.35f;
             if (maxRange > 0f) l.range = Mathf.Min(l.range, maxRange);
+            // ベイク済みシーンでは、77個のライトがライトマップの上にリアルタイムで二重に重なって白飛びするのを防ぐ
+            if (hasBakedLightmaps && !isBaking) l.enabled = false;
         }
         foreach (Light l in GetComponentsInChildren<Light>(true))
         {
-            if (l.type == LightType.Directional) l.intensity = Mathf.Min(l.intensity, 1.2f);
+            if (l.type == LightType.Directional)
+            {
+                l.intensity = Mathf.Min(l.intensity, 0.35f);
+                if (hasBakedLightmaps && !isBaking) l.enabled = false;
+            }
         }
 
-        RenderSettings.ambientIntensity = 0.45f;
-        RenderSettings.reflectionIntensity = 0.45f;
+        RenderSettings.ambientIntensity = 0.22f;
+        RenderSettings.reflectionIntensity = 0.20f;
         foreach (var rp in Object.FindObjectsByType<ReflectionProbe>(FindObjectsSortMode.None))
-            rp.intensity = 0.35f;
+            rp.intensity = 0.20f;
 
         if (Application.isPlaying && !probesDimmed && LightmapSettings.lightProbes != null)
         {
@@ -64,7 +76,7 @@ public class RoomLightDimmer : MonoBehaviour
             if (baked != null && baked.Length > 0)
             {
                 for (int i = 0; i < baked.Length; i++)
-                    baked[i] = baked[i] * 0.35f;
+                    baked[i] = baked[i] * 0.22f;
                 LightmapSettings.lightProbes.bakedProbes = baked;
             }
         }

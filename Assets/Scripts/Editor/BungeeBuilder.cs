@@ -14,12 +14,12 @@ using UnityEngine;
 /// </summary>
 public static partial class BungeeBuilder
 {
-    const string AssetFolder = "Assets/Bungee";
-    const string MaterialFolder = AssetFolder + "/Materials";
-    const string AudioFolder = AssetFolder + "/Audio";
+    internal const string AssetFolder = "Assets/Bungee";
+    internal const string MaterialFolder = AssetFolder + "/Materials";
+    internal const string AudioFolder = AssetFolder + "/Audio";
     const string GratingTexturePath = AssetFolder + "/Textures/Bungee_Grating.png";
     const string HarnessModelPath = AssetFolder + "/Models/Harness/Bungee_Harness.fbx"; // Tripo で作った全身用ハーネス
-    const string FontPath = "Assets/Fonts/MPLUSRounded1c-Bold.ttf";
+    internal const string FontPath = "Assets/Fonts/MPLUSRounded1c-Bold.ttf";
 
     const float PlatformTop = 1.15f;    // バルコニーの手すり（1.12 m）を越える高さ
     const float PlatformV0 = 1.18f;     // 台の幅（窓の端から測る）
@@ -34,12 +34,12 @@ public static partial class BungeeBuilder
     const float CushionHeight = 1.6f;
 
     // 動かない物（ベイクはせず、ライトプローブで照らす）
-    const StaticEditorFlags StaticFlags = StaticEditorFlags.BatchingStatic | StaticEditorFlags.OccludeeStatic | StaticEditorFlags.ReflectionProbeStatic;
+    internal const StaticEditorFlags StaticFlags = StaticEditorFlags.BatchingStatic | StaticEditorFlags.OccludeeStatic | StaticEditorFlags.ReflectionProbeStatic;
 
     static Vector3 origin;   // 窓の外の壁ぎわ・窓の端（階段側）の床
     static Vector3 outward;  // 壁から外へ
     static Vector3 along;    // 窓から階段・ジャンプ台の方へ（壁に沿って）
-    static Font font;
+    internal static Font font;
     static readonly Dictionary<string, Material> materials = new Dictionary<string, Material>();
 
     /// <summary>u: 壁から外へ (m), v: 窓の端から階段の方へ (m), y: 高さ（ワールド）</summary>
@@ -287,6 +287,7 @@ public static partial class BungeeBuilder
         bungee.shrinkSound = LoadClip("Mini_Shrink");
         bungee.growSound = LoadClip("Mini_Grow");
         bungee.voiceCount = new[] { "count_3", "count_2", "count_1", "count_bungee" }.Select(n => LoadClip("Bungee_Voice_" + n)).ToArray();
+        bungee.voiceNoCord = LoadClip("Bungee_Voice_no_cord");
         bungee.plankBreak = LoadClip("Bungee_plank_break");
         bungee.modeLever = LoadClip("Bungee_mode_lever");
         bungee.plankCrackWarn = LoadClip("Bungee_plank_crack_warn");
@@ -430,7 +431,7 @@ public static partial class BungeeBuilder
         }
     }
 
-    static AudioClip LoadClip(string name)
+    internal static AudioClip LoadClip(string name)
     {
         var clip = AssetDatabase.LoadAssetAtPath<AudioClip>($"{AudioFolder}/{name}.mp3");
         if (clip == null) Debug.LogWarning($"[バンジー] 音が見つかりません: {AudioFolder}/{name}.mp3");
@@ -621,7 +622,7 @@ public static partial class BungeeBuilder
     }
 
     /// <summary>動く物の部品（当たり判定なし、Static にしない）。</summary>
-    static GameObject Part(Transform parent, PrimitiveType type, Vector3 localPosition, Vector3 localScale, string material)
+    internal static GameObject Part(Transform parent, PrimitiveType type, Vector3 localPosition, Vector3 localScale, string material)
     {
         var go = GameObject.CreatePrimitive(type);
         go.transform.SetParent(parent, false);
@@ -632,13 +633,13 @@ public static partial class BungeeBuilder
         return go;
     }
 
-    static void Finish(GameObject go, string material)
+    internal static void Finish(GameObject go, string material)
     {
         go.GetComponent<Renderer>().sharedMaterial = GetMaterial(material);
         GameObjectUtility.SetStaticEditorFlags(go, StaticFlags);
     }
 
-    static Transform Marker(Transform parent, string name, Vector3 position, Vector3 forward)
+    internal static Transform Marker(Transform parent, string name, Vector3 position, Vector3 forward)
     {
         var t = new GameObject(name).transform;
         t.SetParent(parent, false);
@@ -647,13 +648,13 @@ public static partial class BungeeBuilder
     }
 
     /// <summary>素材を Assets/Bungee/Materials/Bungee_&lt;name&gt;.mat から取る。中身は毎回ここで作り直して上書きする（作り方を変えたら次にシーンを作るときに反映される）。</summary>
-    static Material GetMaterial(string name)
+    internal static Material GetMaterial(string name)
     {
         if (materials.TryGetValue(name, out var cached)) return cached;
         return SaveMaterial(name, CreateMaterial(name));
     }
 
-    static Material SaveMaterial(string name, Material fresh)
+    internal static Material SaveMaterial(string name, Material fresh)
     {
         string path = $"{MaterialFolder}/Bungee_{name}.mat";
         if (!AssetDatabase.IsValidFolder(AssetFolder)) AssetDatabase.CreateFolder("Assets", "Bungee");

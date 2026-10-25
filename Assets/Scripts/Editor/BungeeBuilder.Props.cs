@@ -149,7 +149,7 @@ public static partial class BungeeBuilder
 
     // ---- 電光掲示板 ----
 
-    struct LedStyle
+    internal struct LedStyle
     {
         public Color[] palette;
         public bool doubleSided;
@@ -161,14 +161,14 @@ public static partial class BungeeBuilder
         public float blinkTime;       // 文字が変わったときの点滅の長さ（0 なら LedSign の既定）
     }
 
-    static readonly Color Amber = new Color(1f, 0.62f, 0.12f), LedRed = new Color(1f, 0.18f, 0.1f), LedGreen = new Color(0.25f, 1f, 0.35f),
+    internal static readonly Color Amber = new Color(1f, 0.62f, 0.12f), LedRed = new Color(1f, 0.18f, 0.1f), LedGreen = new Color(0.25f, 1f, 0.35f),
         LedCyan = new Color(0.2f, 0.9f, 1f), LedWhite = new Color(1f, 0.95f, 0.85f), LedPink = new Color(1f, 0.3f, 0.75f), LedYellow = new Color(1f, 0.92f, 0.2f);
 
     /// <summary>
     /// 電光掲示板。position は文字の真ん中、facing は読む人が向く方向（読む人は板の -facing 側に立つ）。
     /// 黒い枠の中に LED の板、その上に光る文字と LED の点の網、縁に流れる電球。返す TextMesh の text を変えると LedSign が点滅させる。
     /// </summary>
-    static TextMesh LedBoard(Transform parent, string name, string text, Vector3 position, Vector3 facing, float em, LedStyle style)
+    internal static TextMesh LedBoard(Transform parent, string name, string text, Vector3 position, Vector3 facing, float em, LedStyle style)
     {
         string sizing = !string.IsNullOrEmpty(style.marquee) ? new string('あ', style.marqueeWidth) : text;
         string[] lines = sizing.Split('\n');
@@ -393,7 +393,7 @@ public static partial class BungeeBuilder
     }
 
     /// <summary>クッションの上の戻る輪: 光る輪・回る内側の輪・上へ消える光の筒・のぼる光の粒。</summary>
-    static void ReturnPadEffect(Transform parent, Vector3 center)
+    internal static void ReturnPadEffect(Transform parent, Vector3 center)
     {
         var root = new GameObject("ReturnPad_Effect").transform;
         root.SetParent(parent, false);
@@ -634,7 +634,7 @@ public static partial class BungeeBuilder
 
     // ---- 素材 ----
 
-    static Material Lit(Color color, float smoothness, float metallic, Texture2D baseMap = null, Texture2D normal = null, Vector2? tiling = null)
+    internal static Material Lit(Color color, float smoothness, float metallic, Texture2D baseMap = null, Texture2D normal = null, Vector2? tiling = null)
     {
         var mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
         mat.SetColor("_BaseColor", color);
@@ -651,7 +651,7 @@ public static partial class BungeeBuilder
     }
 
     /// <summary>光る（ライトの影響を受けない）素材。mode: "opaque" / "alpha"（半透明）/ "add"（足して光らせる）。</summary>
-    static Material Glow(Color color, Texture2D baseMap, Vector2 tiling, string mode, bool doubleSided, int queueOffset = 0)
+    internal static Material Glow(Color color, Texture2D baseMap, Vector2 tiling, string mode, bool doubleSided, int queueOffset = 0)
     {
         var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
         mat.SetColor("_BaseColor", color);

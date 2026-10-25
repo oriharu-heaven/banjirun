@@ -22,6 +22,7 @@ public static class OverlapCheck
     const float NormalTolerance = 0.9995f; // 向きの差（cos）。約 1.8°
     const float MinArea = 0.0004f;         // これより狭い重なりは数えない（2cm × 2cm）
     const string BungeeRoot = "BungeeJump";
+    const string TimeAttackRoot = TimeAttackBuilder.RootName;
     const string ReportPath = "Builds/OverlapCheck.txt";
 
     public struct Finding
@@ -55,9 +56,9 @@ public static class OverlapCheck
         {
             var scene = EditorSceneManager.OpenScene(path, OpenSceneMode.Single);
             var renderers = scene.GetRootGameObjects().SelectMany(g => g.GetComponentsInChildren<MeshRenderer>()).Cast<Renderer>().ToList();
-            var findings = Find(renderers, r => Under(r, BungeeRoot));
+            var findings = Find(renderers, r => Under(r, BungeeRoot) || Under(r, TimeAttackRoot));
             total += findings.Count;
-            report.AppendLine($"{System.IO.Path.GetFileNameWithoutExtension(path)}: バンジーの物が関わる重なり {findings.Count} 組");
+            report.AppendLine($"{System.IO.Path.GetFileNameWithoutExtension(path)}: バンジー・タイムアタックの物が関わる重なり {findings.Count} 組");
             foreach (var f in findings.OrderByDescending(f => f.area).Take(40))
             {
                 report.AppendLine("  " + Describe(f));

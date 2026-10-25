@@ -60,6 +60,7 @@ public class BungeeJump : MonoBehaviour
     public AudioSource staffVoice;  // 係の人の声（台の上）
     public AudioClip heartbeat, fallWind, jumpWhoosh, cordStretch, plankCreak, carabiner, cushionLand, cheer, voiceNice;
     public AudioClip[] voiceCount;  // 3, 2, 1, バンジー！
+    public AudioClip voiceNoCord;   // 飛び降りる直前の「あ、ひも繋がってなかった」（へぶんボイス）
     public AudioClip shrinkSound, growSound; // ミニキャラになる・等身大に戻る（音を 1 か所で鳴らして録画にも残すため、ここで鳴らす）
 
     [Header("ドッキリモード（カウントダウンの途中で板が折れて、一緒に落ちる）")]
@@ -132,6 +133,7 @@ public class BungeeJump : MonoBehaviour
     float settle;
     Quaternion settleFrom, settleTo;
     bool warned;       // このカウントダウンで予兆が出た
+    bool noCordPlayed; // このカウントダウン・ジャンプで「あ、ひも繋がってなかった」を鳴らした
     bool plankCracked; // 予兆のあと（板が下がって震えている。新しい板に戻るまで）
     float crackShake;
     ParticleSystem splinters;
@@ -224,6 +226,7 @@ public class BungeeJump : MonoBehaviour
             {
                 breakAt = Random.Range(breakWindow.x, breakWindow.y);
                 warned = false;
+                noCordPlayed = false;
             }
             countdown = Mathf.Max(countdown, 0f) + dt;
             if (surpriseMode && !warned && countdown >= breakAt - warnTime) WarnPlank();
@@ -232,6 +235,7 @@ public class BungeeJump : MonoBehaviour
                 BreakPlank();
                 return;
             }
+            if (!surpriseMode && !noCordPlayed && countdown >= 2.55f) PlayNoCord();
             int n = Mathf.Max(0, 3 - Mathf.FloorToInt(countdown / CountdownStep));
             if (n != shownCount)
             {
@@ -250,6 +254,13 @@ public class BungeeJump : MonoBehaviour
         }
     }
 
+    void PlayNoCord()
+    {
+        if (noCordPlayed || voiceNoCord == null) return;
+        noCordPlayed = true;
+        Play(voiceNoCord, 1f);
+    }
+
     /// <summary>体の大きさに合わせた腰の高さ</summary>
     float Waist => waistHeight * body.Scale;
 
@@ -259,6 +270,7 @@ public class BungeeJump : MonoBehaviour
         warned = true;
         plankCracked = true;
         crackShake = 1f;
+        PlayNoCord();
         PlayAt(plankCrackWarn, plank.position, 1f);
         EmitSplinters(8, 0.5f);
         PlankCracked?.Invoke(0.4f);
@@ -287,6 +299,7 @@ public class BungeeJump : MonoBehaviour
 
     void StartFall()
     {
+        PlayNoCord();
         waist = body.Feet + Vector3.up * Waist;
         velocity = body.Velocity;
         length = CordLengthFor(body.Scale);
@@ -741,6 +754,7 @@ public class BungeeJump : MonoBehaviour
         PhaseTime = 0f;
         countdown = -1f;
         shownCount = -1;
+        if (phase != Phase.Falling && phase != Phase.Lowering) noCordPlayed = false;
         SetText(countdownSign, "");
         switch (phase)
         {

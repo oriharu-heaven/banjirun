@@ -73,17 +73,17 @@ public static class VRSceneBuilder
         }
 
         new GameObject("XR Interaction Manager").AddComponent<XRInteractionManager>();
-        var rig = CreateRig(rigPrefab, world.spawn);
+        var rig = CreateRig(rigPrefab, world.spawn, world.spawnYaw);
 
         GameSceneBuilder.SaveAndBake(world.scene, ScenePath);
         Selection.activeGameObject = rig;
-        Debug.Log($"[VR] シーン生成完了: {ScenePath} / つかんで使える物 {usables.Length} 個, テレポート床 {floors} 枚, バンジー {(world.bungee != null ? "あり" : "なし")}, spawn {world.spawn}");
+        Debug.Log($"[VR] シーン生成完了: {ScenePath} / つかんで使える物 {usables.Length} 個, テレポート床 {floors} 枚, バンジー {(world.bungee != null ? "あり" : "なし")}, タイムアタック {(world.timeAttack != null ? "あり" : "なし")}, spawn {world.spawn}");
     }
 
-    static GameObject CreateRig(GameObject rigPrefab, Vector3 spawn)
+    static GameObject CreateRig(GameObject rigPrefab, Vector3 spawn, float spawnYaw = 0f)
     {
         var rig = (GameObject)PrefabUtility.InstantiatePrefab(rigPrefab);
-        rig.transform.SetPositionAndRotation(spawn, Quaternion.identity);
+        rig.transform.SetPositionAndRotation(spawn, Quaternion.Euler(0f, spawnYaw, 0f));
 
         // 床を基準にして、自分の実際の背の高さで見る
         var origin = rig.GetComponent<XROrigin>();

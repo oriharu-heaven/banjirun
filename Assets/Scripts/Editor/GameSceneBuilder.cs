@@ -23,7 +23,9 @@ public static class GameSceneBuilder
         public Scene scene;
         public GameObject room;
         public Vector3 spawn;
+        public float spawnYaw;
         public BungeeJump bungee;
+        public TimeAttackManager timeAttack;
     }
 
     /// <summary>VR 版と画面版のシーンを両方作り直す（コマンドからは -executeMethod GameSceneBuilder.BuildAllScenes）。</summary>
@@ -46,6 +48,7 @@ public static class GameSceneBuilder
         SceneOptimizer.PrepareRoom(world.room);
         SceneOptimizer.AddProbes(world.room);
         world.bungee = BungeeBuilder.Create(world.room);
+        world.timeAttack = TimeAttackBuilder.Create(world.room, out world.spawn, out world.spawnYaw);
         return true;
     }
 

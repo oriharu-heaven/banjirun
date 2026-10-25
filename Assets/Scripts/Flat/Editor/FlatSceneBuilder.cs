@@ -34,16 +34,16 @@ public static class FlatSceneBuilder
     public static void Build()
     {
         if (!GameSceneBuilder.CreateWorld(out var world)) return;
-        var player = CreatePlayer(world.spawn);
+        var player = CreatePlayer(world.spawn, world.spawnYaw);
         GameSceneBuilder.SaveAndBake(world.scene, ScenePath);
         Selection.activeGameObject = player;
-        Debug.Log($"[画面版] シーン生成完了: {ScenePath} / バンジー {(world.bungee != null ? "あり" : "なし")}, spawn {world.spawn}");
+        Debug.Log($"[画面版] シーン生成完了: {ScenePath} / バンジー {(world.bungee != null ? "あり" : "なし")}, タイムアタック {(world.timeAttack != null ? "あり" : "なし")}, spawn {world.spawn}");
     }
 
-    static GameObject CreatePlayer(Vector3 spawn)
+    static GameObject CreatePlayer(Vector3 spawn, float spawnYaw = 0f)
     {
         var player = new GameObject("Player");
-        player.transform.SetPositionAndRotation(spawn, Quaternion.identity);
+        player.transform.SetPositionAndRotation(spawn, Quaternion.Euler(0f, spawnYaw, 0f));
         var controller = player.AddComponent<CharacterController>();
         controller.height = BodyHeight;
         controller.radius = BodyRadius;

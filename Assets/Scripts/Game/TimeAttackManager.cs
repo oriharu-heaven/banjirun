@@ -272,7 +272,7 @@ public class TimeAttackManager : MonoBehaviour, IUsable
         foreach (var t in GetComponentsInChildren<Transform>(true))
         {
             if (t == transform) continue;
-            if (t.name == "StartRetryButton" || t.name == "GoalRetryButton" || t.name == "ReturnPadEffect")
+            if (t.name == "StartRetryButton" || t.name == "GoalRetryButton" || t.name == "ReturnPadEffect" || t.name == "ReturnPad_Effect")
                 t.gameObject.SetActive(false);
         }
     }

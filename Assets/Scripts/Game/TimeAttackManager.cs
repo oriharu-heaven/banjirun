@@ -43,13 +43,14 @@ public class TimeAttackManager : MonoBehaviour, IUsable
     public bool ShowStartBanner => false;
 
     public bool IsElevatorWaiting => !elevatorOpening && !elevatorOpened;
+    public bool IsElevatorOpen => elevatorOpened;
     public bool ShowBirthdayCard => bungee != null && bungee.CurrentPhase == BungeeJump.Phase.Landed;
     public string UseHint => "エレベーターを止めて扉を開ける（スタート）";
 
-    static readonly Vector3 ElevatorSpawn = new Vector3(-7.75f, 0.02f, 2.85f);
-    const float ElevatorYaw = 180f;
-    const float DoorSlideDistance = 0.48f;
-    const float DoorSlideDuration = 1.0f;
+    public static readonly Vector3 ElevatorSpawn = new Vector3(-7.75f, 0.02f, 2.85f);
+    public const float ElevatorYaw = 180f;
+    const float DoorSlideDistance = 0.52f;
+    const float DoorSlideDuration = 0.9f;
 
     PlayerBody body;
     FirstPersonControls controls;
@@ -96,7 +97,13 @@ public class TimeAttackManager : MonoBehaviour, IUsable
     void Update()
     {
         if (body == null) return;
-        if (controls != null && controls.Scripted) return;
+        if (controls != null && controls.Scripted)
+        {
+            if (elevatorOpening && !elevatorOpened)
+                AnimateElevatorDoors(Time.deltaTime);
+            UpdateLandingBirthdayBoard();
+            return;
+        }
 
         // エレベーター内でスタート待ちのとき、E キーまたはクリックでエレベーターを止めて扉を開ける
         if (IsElevatorWaiting && StartPressed())
@@ -115,10 +122,18 @@ public class TimeAttackManager : MonoBehaviour, IUsable
         doorOpenProgress = 0f;
         Play(retrySound, 0.9f);
 
+        // 注意: startSign は TimeAttackStartSign 自身のコンポーネントなので startSign.gameObject を消す（parent は TimeAttack 自身）
         if (startSign != null)
-            startSign.transform.parent.gameObject.SetActive(false);
+            startSign.gameObject.SetActive(false);
         if (doorTriggerCollider != null)
             doorTriggerCollider.enabled = false;
+
+        // 扉が開き始めた瞬間に扉のコライダーを無効化し、Static Collider が残って外に出られなくなるのを確実に防ぐ
+        SetDoorColliders(carDoorL, false);
+        SetDoorColliders(carDoorR, false);
+        SetDoorColliders(landingDoorL, false);
+        SetDoorColliders(landingDoorR, false);
+        Physics.SyncTransforms();
     }
 
     void AnimateElevatorDoors(float dt)
@@ -173,38 +188,43 @@ public class TimeAttackManager : MonoBehaviour, IUsable
         var bridgeCol = bridge.AddComponent<BoxCollider>();
         bridgeCol.size = new Vector3(1.3f, 0.1f, 0.65f);
 
-        // エレベーター扉正面に「START」表示を配置（扉 Z=1.96 から 9cm 手前の Z=2.05 で面重なり 0）
-        if (startSign != null)
-        {
-            var signRoot = startSign.transform.parent;
-            signRoot.gameObject.SetActive(true);
-            signRoot.SetPositionAndRotation(new Vector3(-7.75f, 1.48f, 2.05f), Quaternion.LookRotation(Vector3.back));
-            signRoot.localScale = Vector3.one * 0.62f;
-            startSign.text = "START\n扉を開ける";
-        }
-
-        // エレベーター扉全体を見つめたときにガイド「E / クリック：エレベーターを止めて扉を開ける（スタート）」が出る判定
+        // エレベーター扉全体のトリガー判定
         transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
         doorTriggerCollider = gameObject.GetComponent<BoxCollider>();
         if (doorTriggerCollider == null) doorTriggerCollider = gameObject.AddComponent<BoxCollider>();
         doorTriggerCollider.center = new Vector3(-7.75f, 1.15f, 2.02f);
         doorTriggerCollider.size = new Vector3(1.05f, 2.1f, 0.16f);
         doorTriggerCollider.enabled = true;
+
+        // エレベーター扉正面に「START」表示を配置（扉 Z=1.96 から 9cm 手前の Z=2.05 で面重なり 0）
+        if (startSign != null)
+        {
+            var signGo = startSign.gameObject;
+            signGo.SetActive(true);
+            signGo.transform.SetPositionAndRotation(new Vector3(-7.75f, 1.48f, 2.05f), Quaternion.LookRotation(Vector3.back));
+            signGo.transform.localScale = Vector3.one * 0.62f;
+            startSign.text = "START\n扉を開ける";
+        }
+    }
+
+    static void SetDoorColliders(Transform doorRoot, bool enabled)
+    {
+        if (doorRoot == null) return;
+        foreach (var col in doorRoot.GetComponentsInChildren<Collider>(true))
+            col.enabled = enabled;
     }
 
     static void MakeDynamicRecursive(Transform root)
     {
         foreach (var t in root.GetComponentsInChildren<Transform>(true))
         {
+            t.gameObject.isStatic = false;
+            if (t.TryGetComponent<MeshFilter>(out var mf) && mf.sharedMesh != null)
+                mf.mesh = Instantiate(mf.sharedMesh);
             if (t.TryGetComponent<Renderer>(out var r))
             {
                 r.enabled = false;
-                t.gameObject.isStatic = false;
                 r.enabled = true;
-            }
-            else
-            {
-                t.gameObject.isStatic = false;
             }
         }
     }
@@ -216,8 +236,9 @@ public class TimeAttackManager : MonoBehaviour, IUsable
             var holder = goalFigure.parent != null && goalFigure.parent != transform ? goalFigure.parent : goalFigure;
             holder.gameObject.SetActive(false);
         }
-        if (goalSign != null && goalSign.transform.parent != null)
-            goalSign.transform.parent.gameObject.SetActive(false);
+        // 注意: goalSign は TimeAttackGoalSign 自身のコンポーネントなので goalSign.gameObject を消す
+        if (goalSign != null)
+            goalSign.gameObject.SetActive(false);
 
         foreach (var t in GetComponentsInChildren<Transform>(true))
         {
@@ -239,8 +260,10 @@ public class TimeAttackManager : MonoBehaviour, IUsable
         {
             if (r.name.StartsWith("CasterWagon") && r.transform.position.x < -4.5f)
             {
-                r.enabled = false;
                 r.gameObject.isStatic = false;
+                if (r.TryGetComponent<MeshFilter>(out var mf) && mf.sharedMesh != null)
+                    mf.mesh = Instantiate(mf.sharedMesh);
+                r.enabled = false;
                 r.transform.position += new Vector3(1.8f, 0f, 0f);
                 r.enabled = true;
             }
@@ -253,13 +276,13 @@ public class TimeAttackManager : MonoBehaviour, IUsable
         if (birthdayCardBoard == null) return;
         birthdayCardBoard.SetActive(false);
 
-        // バンジー着地クッションの正面（GroundSign のすぐ横）に配置して、着地した瞬間に目の前にも出るようにする
+        // バンジー着地クッションの正面（GroundSign のすぐ上）に配置して、着地した瞬間に目の前にも出るようにする
         if (bungee != null && bungee.cushion != null && bungee.groundSign != null)
         {
-            Transform gs = bungee.groundSign.transform.parent != null ? bungee.groundSign.transform.parent : bungee.groundSign.transform;
+            Transform gs = bungee.groundSign.transform;
             Vector3 toCushion = Vector3.ProjectOnPlane(bungee.cushion.position - gs.position, Vector3.up).normalized;
             if (toCushion.sqrMagnitude < 0.01f) toCushion = Vector3.right;
-            Vector3 boardPos = gs.position + Vector3.up * 1.15f;
+            Vector3 boardPos = gs.position + Vector3.up * 1.25f;
             birthdayCardBoard.transform.SetPositionAndRotation(boardPos, Quaternion.LookRotation(-toCushion));
             birthdayCardBoard.transform.localScale = Vector3.one * 1.35f;
         }

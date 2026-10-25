@@ -21,8 +21,8 @@ public class FirstPersonControls : MonoBehaviour
         public bool resize;   // 等身大 ⇔ ミニキャラ
     }
 
-    public float walkSpeed = 1.6f;
-    public float runSpeed = 3.2f;
+    public float walkSpeed = 2.6f;
+    public float runSpeed = 4.6f;
     public float jumpHeight = 0.5f;
     public float gravity = -9.81f;
     public float eyeHeight = 1.6f;
@@ -53,6 +53,8 @@ public class FirstPersonControls : MonoBehaviour
     {
         body = GetComponent<PlayerBody>();
         controller = GetComponent<CharacterController>();
+        if (walkSpeed < 2.4f) walkSpeed = 2.6f;
+        if (runSpeed < 4.2f) runSpeed = 4.6f;
     }
 
     void Start()

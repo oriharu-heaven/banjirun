@@ -20,8 +20,8 @@ public static class SceneOptimizer
     const float LightmapResolution = 25f;
     const int LightmapMaxSize = 1024;
 
-    // 室内ライトの明るさ（RoomLightDimmer の倍率。パソコン版は 0.3）。ベイクすると壁や天井に跳ね返った光も入るので、暗めにしてパソコン版と同じくらいの明るさにする
-    const float BakedBrightness = 0.1f;
+    // 室内ライトの明るさ（RoomLightDimmer の倍率。パソコン版は 0.3）。63個の天井スポット＋反射光で白飛びしないよう 0.03 に抑える
+    const float BakedBrightness = 0.03f;
 
     // 描画をまとめるのは SceneMeshCombiner がビルド時にするので、Unity の静的バッチ（BatchingStatic）は付けない（先に掛かるとまとめられなくなる）
     const StaticEditorFlags StaticFlags = StaticEditorFlags.ContributeGI
@@ -53,6 +53,28 @@ public static class SceneOptimizer
     // 反射プローブ（光沢のある床や机に、空ではなく部屋が映るように）を置く部屋の床と、部屋の高さ
     static readonly string[] ReflectionFloors = { "Floor_Hall", "Floor_Entrance", "Floor_Annex" };
     const float RoomHeight = 3f;
+
+    [InitializeOnLoadMethod]
+    static void RefreshTonedLightmapsOnce()
+    {
+        const string key = "BanjiRun_TonedLightmaps_v1";
+        if (SessionState.GetBool(key, false)) return;
+        SessionState.SetBool(key, true);
+        EditorApplication.delayCall += () =>
+        {
+            foreach (var guid in AssetDatabase.FindAssets("Lightmap-", new[] { "Assets/Scenes" }))
+            {
+                string p = AssetDatabase.GUIDToAssetPath(guid);
+                if (p.EndsWith(".exr")) AssetDatabase.ImportAsset(p, ImportAssetOptions.ForceUpdate);
+            }
+            var dimmer = Object.FindFirstObjectByType<RoomLightDimmer>();
+            if (dimmer != null)
+            {
+                dimmer.brightness = BakedBrightness;
+                dimmer.Apply();
+            }
+        };
+    }
 
     /// <summary>.blend の取り込みでライトマップ用の UV を作る（パソコン版の見た目は変わらない）。設定を変えたときだけ取り込み直す。</summary>
     public static void EnsureLightmapUVs()
@@ -91,8 +113,16 @@ public static class SceneOptimizer
         }
 
         int exact = 0, approx = 0, removed = 0, kept = 0;
+        // 入口ドア正面のワゴン（CasterWagon）が中央通路を塞いでいたので、バー側の壁際へ 1.8m ずらす
+        foreach (var t in room.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name.StartsWith("CasterWagon"))
+                t.position += new Vector3(1.8f, 0f, 0f);
+        }
+
         // 天井の照明（ライトレールとスポット）には当たり判定を付けない。長いので「大きい物」扱いで残ると、
-        // 舞台（20cm）の上で体の段を上がる確認が届いて、その下を歩けなくなっていた
+        // 舞台（20cm）の上で体の段を上がる確認が届いて、その下を歩けなくなっていた。
+        // また、椅子（_Chair_）・床のケーブル（Cable_）・傘立て（UmbrellaStand_）・ワゴン（CasterWagon）の当たり判定も外し、机の間の通路を引っかからず歩けるようにする
         var lighting = room.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == LightingGroup);
         foreach (var meshCollider in room.GetComponentsInChildren<MeshCollider>(true))
         {
@@ -103,7 +133,9 @@ public static class SceneOptimizer
             bool large = size >= MaxBoxColliderSize;
             bool box = mesh != null && IsBox(mesh);
             bool fixture = lighting != null && meshCollider.transform.IsChildOf(lighting);
-            if (mesh == null || fixture || size < TinyColliderSize || (bounds.min.y > ReachHeight && !large))
+            string n = meshCollider.name;
+            bool walkObstacle = n.Contains("_Chair_") || n.StartsWith("Cable_") || n.StartsWith("CasterWagon") || n.Contains("UmbrellaStand");
+            if (mesh == null || fixture || walkObstacle || size < TinyColliderSize || (bounds.min.y > ReachHeight && !large))
             {
                 removed++;
             }

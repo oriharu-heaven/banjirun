@@ -100,7 +100,26 @@ public class TimeAttackManager : MonoBehaviour
             birthdayCard = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Bungee/Textures/BirthdayCard.png");
 #endif
         ApplyBirthdayCardTexture();
+        ClearWalkObstacles();
         BeginRun(teleportToStart: true);
+    }
+
+    static void ClearWalkObstacles()
+    {
+        foreach (var col in FindObjectsByType<Collider>(FindObjectsSortMode.None))
+        {
+            string n = col.name;
+            if (n.Contains("_Chair_") || n.StartsWith("Cable_") || n.StartsWith("CasterWagon") || n.Contains("UmbrellaStand"))
+                col.enabled = false;
+        }
+        foreach (var r in FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+        {
+            if (r.name.StartsWith("CasterWagon") && r.transform.position.x < -4.5f)
+            {
+                r.gameObject.isStatic = false;
+                r.transform.position += new Vector3(1.8f, 0f, 0f);
+            }
+        }
     }
 
     void Update()
